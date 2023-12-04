@@ -1,11 +1,15 @@
-import datetime
+from datetime import datetime
+import json
 from math import radians
 import bpy
 from mathutils import *
 D = bpy.data
 C = bpy.context
 
-def parse_poses(poses):
+def parse_poses(posesUrl):
+
+    with open(posesUrl, 'r') as file:
+        poses = json.load(file)
 
     frames = None
     if "images" in poses:
@@ -21,8 +25,6 @@ def parse_poses(poses):
     i = 0
 
     for pose in frames:
-        pos = pose["location"]
-
         quat = Quaternion()
 
         if len(pose["rotation"]) == 4:
@@ -30,10 +32,8 @@ def parse_poses(poses):
             quat.x, quat.y, quat.z, quat.w = pose["rotation"]
         elif len(pose["rotation"]) == 3:
             # Assume we have Euler angles
-            euler = (radians(angle) for angle in pose["rotation"])
-            quat = Quaternion(euler=euler)
-
-        positions.append(pos)
+            euler = Euler(pose["rotation"], 'XYZ')
+            quat = euler.to_quaternion()
 
         if "fovy" not in pose:
             print(f"Pose {i} has no 'fovy' property!")
@@ -51,7 +51,7 @@ def parse_poses(poses):
             "aspect": 1.0,
             "near": 0.5,
             "far": 100,
-            "position": pos,
+            "position": pose["location"],
             "quaternion": quat,
             "image_file": pose["imagefile"],
             "timestamp": datetime.strptime(pose["timestamp"], "%Y-%m-%dT%H:%M:%S.%f%z")

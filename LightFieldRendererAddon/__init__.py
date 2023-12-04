@@ -13,10 +13,36 @@ bl_info = {
 import bpy
 from . dem import *
 from . util import *
+from . cameras import *
 
-class FolderPathAddonPreferences(bpy.types.AddonPreferences):
-    bl_idname = __name__
+class CameraDataPropertyGroup(bpy.types.PropertyGroup):
+    fovy: bpy.props.FloatProperty(name="Field of View")
+    aspect: bpy.props.FloatProperty(name="Aspect Ratio")
+    near: bpy.props.FloatProperty(name="Near")
+    far: bpy.props.FloatProperty(name="Far")
 
+    position: bpy.props.FloatVectorProperty(
+        name="Position",
+        default=(0.0, 0.0, 0.0),
+        size=3,
+    )
+    quaternion: bpy.props.FloatVectorProperty(
+        name="Quaternion",
+        default=(0.0, 0.0, 0.0, 1.0),
+        size=4,
+    )
+    image_file: bpy.props.StringProperty(
+        name="Image File",
+        default="",
+    )
+    timestamp: bpy.props.StringProperty(
+        name="Timestamp",
+        default="",
+    )
+
+class LFRProperties(bpy.types.PropertyGroup):
+    cameras: bpy.props.CollectionProperty(type=CameraDataPropertyGroup)
+    
     folder_path: bpy.props.StringProperty(
         name="Folder Path",
         subtype='DIR_PATH',
@@ -42,7 +68,95 @@ class LoadLFRDataOperator(bpy.types.Operator):
 
     def execute(self, context):
         util.clear_scene_except_lights()
-        dem.import_dem(context.preferences.addons[__name__].preferences.dem_path, rotation=(90, 0, 0)) #euler rotation
+        dem.import_dem(context.scene.lfr_properties.dem_path, rotation=(0, 0, 0)) #euler rotation
+
+        lfr_properties = context.scene.lfr_properties
+        cameras_collection = lfr_properties.cameras
+        cameras_collection.clear()
+
+        # Add a new camera data item to the collection
+        camerasData = parse_poses(context.scene.lfr_properties.cameras_path)
+
+        #print(camerasData[ind]["fovy"])
+        #print(camerasData[ind]["aspect"])
+        #print(camerasData[ind]["near"])
+        #print(camerasData[ind]["far"])
+        #print(camerasData[ind]["position"])
+        #print(camerasData[ind]["quaternion"])
+        #print(camerasData[ind]["image_file"])
+        #print(camerasData[ind]["timestamp"])
+
+        def custom_json_serializer(obj):
+            if isinstance(obj, (datetime,)):
+                return obj.isoformat()
+            elif isinstance(obj, (Quaternion,)):
+                return [obj.x, obj.y, obj.z, obj.w]
+            else:
+                raise TypeError("Type not serializable")
+
+        if (camerasData is not None):
+            for camData in camerasData:
+                # Assuming camData["quaternion"] is a Quaternion
+                camQuaternion = [camData["quaternion"].x, camData["quaternion"].y, camData["quaternion"].z, camData["quaternion"].w]
+                # Assuming camData["timestamp"] is a datetime object
+                camTimeStamp = camData["timestamp"].isoformat()
+                pos = camData["position"]
+
+                # 0 = X, 1 = Y, 2 = Z
+                # blender uses XZY 
+                z_temp = pos[2]
+                pos[2] = pos[1]
+                pos[1] = z_temp * -1
+
+                new_camera = cameras_collection.add()
+                new_camera.fovy = camData["fovy"]
+                new_camera.aspect = camData["aspect"]
+                new_camera.near = camData["near"]
+                new_camera.far = camData["far"]
+                new_camera.position = pos
+                new_camera.quaternion = camQuaternion
+                new_camera.image_file = camData["image_file"]
+                new_camera.timestamp = camTimeStamp
+
+            print(lfr_properties.cameras)
+
+            #print(cameras_collection[0].fovy)
+            #print(cameras_collection[0].aspect)
+            #print(cameras_collection[0].near)
+            #print(cameras_collection[0].far)
+            #print(cameras_collection[0].position)
+            #print(cameras_collection[0].quaternion)
+            #print(cameras_collection[0].image_file)
+            #print(cameras_collection[0].timestamp)
+
+
+            everyNObject = 5
+            for i, camera_data in enumerate(cameras_collection):
+                if i % everyNObject == 0:  # Generate cubes only for every third entry
+                    bpy.ops.mesh.primitive_cube_add(size=2, location=camera_data.position)
+                    new_cube = bpy.context.active_object
+
+            
+            # for camera_data in cameras_collection:
+            #     bpy.ops.object.camera_add(location=camera_data.position)
+            #     new_camera = bpy.context.active_object
+            #     new_camera.data.lens = camera_data.fovy
+            #     new_camera.data.clip_start = camera_data.near
+            #     new_camera.data.clip_end = camera_data.far
+            #     new_camera.data.sensor_fit = 'HORIZONTAL'  # or 'VERTICAL', depending on your needs
+            #     new_camera.data.lens_unit = 'FOV'
+
+            #     # Convert FloatVectorProperty to Quaternion
+            #     quaternion_data = Quaternion(camera_data.quaternion)
+
+            #     # Convert quaternion to Euler
+            #     euler_rotation = quaternion_data.to_euler('XYZ')
+            #     new_camera.rotation_euler = euler_rotation
+
+            #     # Set any other properties you need
+            #     new_camera.name = camera_data.image_file
+
+
         return {'FINISHED'}
 
 #---------------------------------
@@ -57,11 +171,11 @@ class LFRPanel(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
         row = layout.row()
-          
-        addon_prefs = context.preferences.addons[__name__].preferences
-        layout.prop(addon_prefs, "folder_path", text="Set Data Path")
-        layout.prop(addon_prefs, "dem_path", text="Set DEM Path") # Debug
-        layout.prop(addon_prefs, "cameras_path", text="Set Cameras Path") # Debug
+     
+        addon_props = context.scene.lfr_properties
+        layout.prop(addon_props, "folder_path", text="Set Data Path")
+        layout.prop(addon_props, "dem_path", text="Set DEM Path") # Debug
+        layout.prop(addon_props, "cameras_path", text="Set Cameras Path") # Debug
         row = layout.row()
         row.operator("wm.load_data", text="Load LFR Data")
 
@@ -81,14 +195,18 @@ class SubPanelA(bpy.types.Panel):
             
             
 def register():
-    bpy.utils.register_class(FolderPathAddonPreferences)
+    bpy.utils.register_class(CameraDataPropertyGroup)
+    bpy.utils.register_class(LFRProperties)
+    bpy.types.Scene.lfr_properties = bpy.props.PointerProperty(type=LFRProperties)
     bpy.utils.register_class(LoadLFRDataOperator)
     bpy.utils.register_class(LFRPanel)
     bpy.utils.register_class(SubPanelA)
 
 
 def unregister():
-    bpy.utils.unregister_class(FolderPathAddonPreferences)
+    bpy.utils.unregister_class(CameraDataPropertyGroup)
+    bpy.utils.unregister_class(LFRProperties)
+    del bpy.types.Scene.lfr_properties
     bpy.utils.unregister_class(LoadLFRDataOperator)
     bpy.utils.unregister_class(LFRPanel)
     bpy.utils.unregister_class(SubPanelA)
