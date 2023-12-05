@@ -3,11 +3,12 @@ import json
 from math import radians
 import bpy
 from mathutils import *
-from .__init__ import CurveDataPropertyGroup
 D = bpy.data
 C = bpy.context
 
 def parse_poses(posesUrl):
+
+    posesUrl += "matched_poses.json"
 
     with open(posesUrl, 'r') as file:
         poses = json.load(file)
@@ -74,7 +75,6 @@ def createCurveDataOutOfCameras(cameras_collection):
     # Create a follower camera object
     bpy.ops.object.camera_add(location=cameras_collection[0].position[:])  # Convert to tuple
     camera_obj = bpy.context.active_object
-
     bpy.context.scene.camera = camera_obj # Set the active camera in the scene
     bpy.context.scene.collection.objects.link(camera_obj)     # Link the camera to the scene
 
@@ -108,4 +108,5 @@ def createCurveDataOutOfCameras(cameras_collection):
 
 
     bpy.context.scene.frame_set(0) # set to frame 0 again
+    return camera_obj
     

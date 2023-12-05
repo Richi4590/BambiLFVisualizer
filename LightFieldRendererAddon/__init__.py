@@ -10,7 +10,10 @@ bl_info = {
     "category": "",
 }
 
+import addon_utils
 import bpy
+
+from . lightfields import createImageWithShaderAndShrinkwrapModifier
 from . dem import *
 from . util import *
 from . cameras import *
@@ -48,6 +51,8 @@ class CurveDataPropertyGroup(bpy.types.PropertyGroup):
 class LFRProperties(bpy.types.PropertyGroup):
     cameras: bpy.props.CollectionProperty(type=CameraDataPropertyGroup)
     curve_data: bpy.props.CollectionProperty(type=CurveDataPropertyGroup) #maybe irrelevant
+    dem_mesh_obj: bpy.props.PointerProperty(type=bpy.types.Object)
+    cam_obj: bpy.props.PointerProperty(type=bpy.types.Object)
 
     folder_path: bpy.props.StringProperty(
         name="Folder Path",
@@ -65,7 +70,7 @@ class LFRProperties(bpy.types.PropertyGroup):
     cameras_path: bpy.props.StringProperty(
         name="CAMERAS Path",
         subtype='FILE_PATH',
-        default="E:/u_Semester_Project/Data/Parkplatz_1ms/Frames_T/matched_poses.json", 
+        default="E:/u_Semester_Project/Data/Parkplatz_1ms/Frames_T/", 
     )
 
 class LoadLFRDataOperator(bpy.types.Operator):
@@ -74,9 +79,10 @@ class LoadLFRDataOperator(bpy.types.Operator):
 
     def execute(self, context):
         util.clear_scene_except_lights()
-        dem.import_dem(context.scene.lfr_properties.dem_path, rotation=(0, 0, 0)) #euler rotation
 
         lfr_properties = context.scene.lfr_properties
+        lfr_properties.dem_mesh_obj = dem.import_dem(lfr_properties.dem_path, rotation=(0, 0, 0)) #euler rotation
+
         cameras_collection = lfr_properties.cameras
         cameras_collection.clear()
 
@@ -109,29 +115,13 @@ class LoadLFRDataOperator(bpy.types.Operator):
                 new_camera.image_file = camData["image_file"]
                 new_camera.timestamp = camTimeStamp
 
-            print(lfr_properties.cameras)
-            createCurveDataOutOfCameras(cameras_collection)
-            print(cameras_collection[0].quaternion[0], cameras_collection[0].quaternion[1], cameras_collection[0].quaternion[2])
+            #print(lfr_properties.cameras)
+            lfr_properties.cam_obj = createCurveDataOutOfCameras(cameras_collection) # rendering camera gets generated inside
+            print(lfr_properties.cam_obj.name)
 
-            # for camera_data in cameras_collection:
-            #     bpy.ops.object.camera_add(location=camera_data.position)
-            #     new_camera = bpy.context.active_object
-            #     new_camera.data.lens = camera_data.fovy
-            #     new_camera.data.clip_start = camera_data.near
-            #     new_camera.data.clip_end = camera_data.far
-            #     new_camera.data.sensor_fit = 'HORIZONTAL'  # or 'VERTICAL', depending on your needs
-            #     new_camera.data.lens_unit = 'FOV'
+            #print(cameras_collection[0].quaternion[0], cameras_collection[0].quaternion[1], cameras_collection[0].quaternion[2])
 
-            #     # Convert FloatVectorProperty to Quaternion
-            #     quaternion_data = Quaternion(camera_data.quaternion)
-
-            #     # Convert quaternion to Euler
-            #     euler_rotation = quaternion_data.to_euler('XYZ')
-            #     new_camera.rotation_euler = euler_rotation
-
-            #     # Set any other properties you need
-            #     new_camera.name = camera_data.image_file
-
+            createImageWithShaderAndShrinkwrapModifier(lfr_properties.cam_obj, lfr_properties.cameras_path, cameras_collection[0].image_file, lfr_properties.dem_mesh_obj.name)
 
         return {'FINISHED'}
 
@@ -147,7 +137,6 @@ class LFRPanel(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
         row = layout.row()
-     
         addon_props = context.scene.lfr_properties
         layout.prop(addon_props, "folder_path", text="Set Data Path")
         layout.prop(addon_props, "dem_path", text="Set DEM Path") # Debug
@@ -171,6 +160,7 @@ class SubPanelA(bpy.types.Panel):
             
             
 def register():
+    addon_utils.enable('io_import_images_as_planes', default_set=True, persistent=True, handle_error=None)
     bpy.utils.register_class(CameraDataPropertyGroup)
     bpy.utils.register_class(CurveDataPropertyGroup)
     bpy.utils.register_class(LFRProperties)
@@ -181,6 +171,7 @@ def register():
 
 
 def unregister():
+    addon_utils.disable('io_import_images_as_planes', default_set=False, handle_error=None)
     bpy.utils.unregister_class(CameraDataPropertyGroup)
     bpy.utils.unregister_class(CurveDataPropertyGroup)
     bpy.utils.unregister_class(LFRProperties)

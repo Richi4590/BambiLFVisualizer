@@ -28,7 +28,7 @@ def import_dem(dem_path, rotation):
         obj.rotation_euler = rotation_radians
         #bpy.ops.object.origin_set(type='GEOMETRY_ORIGIN', center='BOUNDS')
 
-        return obj.name
+        return obj
     else:
         return None
 
