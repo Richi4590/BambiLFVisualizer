@@ -40,9 +40,15 @@ class CameraDataPropertyGroup(bpy.types.PropertyGroup):
         default="",
     )
 
+#maybe irrelevant
+class CurveDataPropertyGroup(bpy.types.PropertyGroup):
+    curve_name: bpy.props.StringProperty()
+    curve: bpy.props.PointerProperty(type=bpy.types.Object)
+
 class LFRProperties(bpy.types.PropertyGroup):
     cameras: bpy.props.CollectionProperty(type=CameraDataPropertyGroup)
-    
+    curve_data: bpy.props.CollectionProperty(type=CurveDataPropertyGroup) #maybe irrelevant
+
     folder_path: bpy.props.StringProperty(
         name="Folder Path",
         subtype='DIR_PATH',
@@ -77,22 +83,7 @@ class LoadLFRDataOperator(bpy.types.Operator):
         # Add a new camera data item to the collection
         camerasData = parse_poses(context.scene.lfr_properties.cameras_path)
 
-        #print(camerasData[ind]["fovy"])
-        #print(camerasData[ind]["aspect"])
-        #print(camerasData[ind]["near"])
-        #print(camerasData[ind]["far"])
-        #print(camerasData[ind]["position"])
-        #print(camerasData[ind]["quaternion"])
-        #print(camerasData[ind]["image_file"])
-        #print(camerasData[ind]["timestamp"])
-
-        def custom_json_serializer(obj):
-            if isinstance(obj, (datetime,)):
-                return obj.isoformat()
-            elif isinstance(obj, (Quaternion,)):
-                return [obj.x, obj.y, obj.z, obj.w]
-            else:
-                raise TypeError("Type not serializable")
+        #print(camerasData[0]["fovy"])
 
         if (camerasData is not None):
             for camData in camerasData:
@@ -119,24 +110,9 @@ class LoadLFRDataOperator(bpy.types.Operator):
                 new_camera.timestamp = camTimeStamp
 
             print(lfr_properties.cameras)
+            createCurveDataOutOfCameras(cameras_collection)
+            print(cameras_collection[0].quaternion[0], cameras_collection[0].quaternion[1], cameras_collection[0].quaternion[2])
 
-            #print(cameras_collection[0].fovy)
-            #print(cameras_collection[0].aspect)
-            #print(cameras_collection[0].near)
-            #print(cameras_collection[0].far)
-            #print(cameras_collection[0].position)
-            #print(cameras_collection[0].quaternion)
-            #print(cameras_collection[0].image_file)
-            #print(cameras_collection[0].timestamp)
-
-
-            everyNObject = 5
-            for i, camera_data in enumerate(cameras_collection):
-                if i % everyNObject == 0:  # Generate cubes only for every third entry
-                    bpy.ops.mesh.primitive_cube_add(size=2, location=camera_data.position)
-                    new_cube = bpy.context.active_object
-
-            
             # for camera_data in cameras_collection:
             #     bpy.ops.object.camera_add(location=camera_data.position)
             #     new_camera = bpy.context.active_object
@@ -196,6 +172,7 @@ class SubPanelA(bpy.types.Panel):
             
 def register():
     bpy.utils.register_class(CameraDataPropertyGroup)
+    bpy.utils.register_class(CurveDataPropertyGroup)
     bpy.utils.register_class(LFRProperties)
     bpy.types.Scene.lfr_properties = bpy.props.PointerProperty(type=LFRProperties)
     bpy.utils.register_class(LoadLFRDataOperator)
@@ -205,6 +182,7 @@ def register():
 
 def unregister():
     bpy.utils.unregister_class(CameraDataPropertyGroup)
+    bpy.utils.unregister_class(CurveDataPropertyGroup)
     bpy.utils.unregister_class(LFRProperties)
     del bpy.types.Scene.lfr_properties
     bpy.utils.unregister_class(LoadLFRDataOperator)

@@ -23,6 +23,9 @@ def delete_object_by_name(name):
         bpy.ops.object.delete()
 
 def clear_scene_except_lights():
+    # Ensure we are in OBJECT mode
+    bpy.ops.object.mode_set(mode='OBJECT')
+
     # Deselect all objects
     bpy.ops.object.select_all(action='DESELECT')
 

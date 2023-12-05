@@ -3,6 +3,7 @@ import json
 from math import radians
 import bpy
 from mathutils import *
+from .__init__ import CurveDataPropertyGroup
 D = bpy.data
 C = bpy.context
 
@@ -19,46 +20,92 @@ def parse_poses(posesUrl):
     else:
         print("No 'images' or 'frames' found in poses")
         return
-
-    positions = []
+    
     cameras = []
     i = 0
 
     for pose in frames:
-        quat = Quaternion()
+        if i % 15 == 0:
+            quat = Quaternion()
 
-        if len(pose["rotation"]) == 4:
-            # Assume we have a quaternion
-            quat.x, quat.y, quat.z, quat.w = pose["rotation"]
-        elif len(pose["rotation"]) == 3:
-            # Assume we have Euler angles
-            euler = Euler(pose["rotation"], 'XYZ')
-            quat = euler.to_quaternion()
+            if len(pose["rotation"]) == 4:
+                # Assume we have a quaternion
+                quat.x, quat.y, quat.z, quat.w = pose["rotation"]
+            elif len(pose["rotation"]) == 3:
+                # Assume we have Euler angles
 
-        if "fovy" not in pose:
-            print(f"Pose {i} has no 'fovy' property!")
-            raise ValueError(f"Pose {i} has no 'fovy' property!")
+                # IMPORTANT: very likely needs to be changed
+                pose["rotation"][1] = pose["rotation"][1] + 180 # hot fix ---------------------------------------<<<
+                pose["rotation"][2] = pose["rotation"][2] - 90 # hot fix ---------------------------------------<<<
 
-        if isinstance(pose["fovy"], list):
-            pose["fovy"] = pose["fovy"][0]
+                euler_angles_radians = [radians(angle) for angle in pose["rotation"]]
+                euler = Euler(euler_angles_radians, 'XYZ')
+                quat = euler.to_quaternion()
 
-        if not isinstance(pose["fovy"], (int, float)):
-            print(f"Pose {i} has no numeric 'fovy' property!")
-            raise ValueError(f"Pose {i} has no numeric 'fovy' property!")
+            if "fovy" not in pose:
+                print(f"Pose {i} has no 'fovy' property!")
+                raise ValueError(f"Pose {i} has no 'fovy' property!")
 
-        camera = {
-            "fovy": pose["fovy"],
-            "aspect": 1.0,
-            "near": 0.5,
-            "far": 100,
-            "position": pose["location"],
-            "quaternion": quat,
-            "image_file": pose["imagefile"],
-            "timestamp": datetime.strptime(pose["timestamp"], "%Y-%m-%dT%H:%M:%S.%f%z")
-        }
+            if isinstance(pose["fovy"], list):
+                pose["fovy"] = pose["fovy"][0]
 
-        cameras.append(camera)
+            if not isinstance(pose["fovy"], (int, float)):
+                print(f"Pose {i} has no numeric 'fovy' property!")
+                raise ValueError(f"Pose {i} has no numeric 'fovy' property!")
+
+            camera = {
+                "fovy": pose["fovy"],
+                "aspect": 1.0,
+                "near": 0.5,
+                "far": 100,
+                "position": pose["location"],
+                "quaternion": quat,
+                "image_file": pose["imagefile"],
+                "timestamp": datetime.strptime(pose["timestamp"], "%Y-%m-%dT%H:%M:%S.%f%z")
+            }
+
+            cameras.append(camera)
 
         i += 1
 
     return cameras
+
+def createCurveDataOutOfCameras(cameras_collection):
+    # Create a follower camera object
+    bpy.ops.object.camera_add(location=cameras_collection[0].position[:])  # Convert to tuple
+    camera_obj = bpy.context.active_object
+
+    bpy.context.scene.camera = camera_obj # Set the active camera in the scene
+    bpy.context.scene.collection.objects.link(camera_obj)     # Link the camera to the scene
+
+    # Create a path
+    first_cam_location = cameras_collection[0].position
+    bpy.ops.curve.primitive_bezier_curve_add(enter_editmode=False, align='WORLD', location=first_cam_location)
+    path = bpy.context.active_object
+    path.name = "LFR_Path"
+
+    # Link the path to the scene
+    bpy.context.scene.collection.objects.link(path)
+
+    # Set keyframes for the camera location
+    for i, camera_data in enumerate(cameras_collection):
+        frame = i + 1
+        # Add a control point for the path
+        bpy.ops.object.mode_set(mode='EDIT') # currently selected object is path
+        bpy.ops.curve.vertex_add(location=camera_data.position)
+        bpy.ops.curve.decimate(ratio=0.8)     # Add Simplify Curve modifier
+        bpy.ops.object.mode_set(mode='OBJECT')
+        bpy.context.scene.frame_set(frame)
+
+        camera_obj.location = camera_data.position
+        camera_obj.rotation_mode = 'QUATERNION'
+        camera_obj.rotation_quaternion = camera_data.quaternion
+        camera_obj.data.lens = camera_data.fovy  # Set the focal length (not FOV)
+        
+        camera_obj.keyframe_insert(data_path="location", index=-1)
+        camera_obj.keyframe_insert(data_path="rotation_quaternion", index=-1)
+        camera_obj.data.keyframe_insert(data_path="lens", index=-1)  # Keyframe for focal length
+
+
+    bpy.context.scene.frame_set(0) # set to frame 0 again
+    
