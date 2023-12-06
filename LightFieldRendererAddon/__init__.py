@@ -13,7 +13,7 @@ bl_info = {
 import addon_utils
 import bpy
 
-from . lightfields import createImageWithShaderAndShrinkwrapModifier
+from . lightfields import createImgWithShaderAndModifier
 from . dem import *
 from . util import *
 from . cameras import *
@@ -53,6 +53,24 @@ class LFRProperties(bpy.types.PropertyGroup):
     curve_data: bpy.props.CollectionProperty(type=CurveDataPropertyGroup) #maybe irrelevant
     dem_mesh_obj: bpy.props.PointerProperty(type=bpy.types.Object)
     cam_obj: bpy.props.PointerProperty(type=bpy.types.Object)
+    pinhole_frame_obj: bpy.props.PointerProperty(type=bpy.types.Object) # when only watchin 1 frame at a time, its only 1x plane, 
+                                                                    # no need to destroy and create another one each new keyframe
+    pinhole_view: bpy.props.BoolProperty(default=True)
+    
+    # amount of frames to be used to "interpolate"
+    frames_to_interpolate: bpy.props.IntProperty(
+        default=0,
+        min=0,
+        max=100
+    )
+
+    #focus value for the interpolation
+    focus: bpy.props.IntProperty(
+        default=0,
+        min=-50,
+        max=50
+    )  
+
 
     folder_path: bpy.props.StringProperty(
         name="Folder Path",
@@ -78,24 +96,25 @@ class LoadLFRDataOperator(bpy.types.Operator):
     bl_label = "Load LFR Data"
 
     def execute(self, context):
+        if post_frame_change_handler in bpy.app.handlers.frame_change_post:
+            bpy.app.handlers.frame_change_post.remove(post_frame_change_handler)
+
         util.clear_scene_except_lights()
+        lfr_props = context.scene.lfr_properties
+        lfr_props.dem_mesh_obj = dem.import_dem(lfr_props.dem_path, rotation=(0, 0, 0)) #euler rotation
 
-        lfr_properties = context.scene.lfr_properties
-        lfr_properties.dem_mesh_obj = dem.import_dem(lfr_properties.dem_path, rotation=(0, 0, 0)) #euler rotation
-
-        cameras_collection = lfr_properties.cameras
+        cameras_collection = lfr_props.cameras
         cameras_collection.clear()
 
         # Add a new camera data item to the collection
-        camerasData = parse_poses(context.scene.lfr_properties.cameras_path)
+        camerasData = parse_poses(lfr_props.cameras_path)
 
-        #print(camerasData[0]["fovy"])
+        #print(camerasData[0]["fovy"]) #debug
 
+        #takes the camera dataset and loads it into the lfr_properties.cameras (cameras_collection)
         if (camerasData is not None):
             for camData in camerasData:
-                # Assuming camData["quaternion"] is a Quaternion
                 camQuaternion = [camData["quaternion"].x, camData["quaternion"].y, camData["quaternion"].z, camData["quaternion"].w]
-                # Assuming camData["timestamp"] is a datetime object
                 camTimeStamp = camData["timestamp"].isoformat()
                 pos = camData["position"]
 
@@ -115,18 +134,88 @@ class LoadLFRDataOperator(bpy.types.Operator):
                 new_camera.image_file = camData["image_file"]
                 new_camera.timestamp = camTimeStamp
 
-            #print(lfr_properties.cameras)
-            lfr_properties.cam_obj = createCurveDataOutOfCameras(cameras_collection) # rendering camera gets generated inside
-            print(lfr_properties.cam_obj.name)
+            #print(lfr_props.cameras) #debug
 
-            #print(cameras_collection[0].quaternion[0], cameras_collection[0].quaternion[1], cameras_collection[0].quaternion[2])
+            lfr_props.cam_obj = createCurveDataAndKeyFramesOutOfCameras(cameras_collection) # rendering camera gets generated inside
+            #print(lfr_props.cam_obj.name) #debug
+            bpy.app.handlers.frame_change_post.append(post_frame_change_handler)
+            lfr_props.pinhole_frame_obj = createImgWithShaderAndModifier(lfr_props.cam_obj, lfr_props.cameras_path, lfr_props.cameras[0].image_file, lfr_props.dem_mesh_obj.name) #create a plane once
+            bpy.context.scene.frame_set(0) # set to frame 0 again, triggers post_frame_change_handler() once
 
-            createImageWithShaderAndShrinkwrapModifier(lfr_properties.cam_obj, lfr_properties.cameras_path, cameras_collection[0].image_file, lfr_properties.dem_mesh_obj.name)
+            #print(cameras_collection[0].quaternion[0], cameras_collection[0].quaternion[1], cameras_collection[0].quaternion[2]) #debug
 
+            bpy.ops.object.mode_set(mode="OBJECT")    
+            bpy.ops.object.select_all(action='DESELECT') # deselect everything
+            bpy.data.objects[lfr_props.cam_obj.name].select_set(True) # have camera selected after loading
         return {'FINISHED'}
 
 #---------------------------------
+def create_parent(name):
+    # Create an empty object to serve as the parent
+    parent_obj = bpy.data.objects.new(name, None)
+    bpy.context.scene.collection.objects.link(parent_obj)
+    bpy.context.view_layer.objects.active = parent_obj
+    bpy.ops.object.select_all(action='DESELECT')
+    parent_obj.select_set(True)
 
+    return parent_obj
+
+def add_child(parent, child):
+    # Parent the child to the parent
+    child.select_set(True)
+    bpy.context.view_layer.objects.active = parent
+    bpy.ops.object.parent_set(type='OBJECT')
+
+def remove_children(parent):
+    bpy.ops.object.mode_set(mode='OBJECT')
+    # Remove all children of the parent
+    children = [child for child in bpy.data.objects if child.parent == parent]
+    bpy.ops.object.select_all(action='DESELECT')
+    bpy.context.view_layer.objects.active = parent
+    parent.select_set(True)
+
+    # Select children manually
+    for child in children:
+        child.select_set(True)
+
+    bpy.ops.object.parent_clear(type='CLEAR_KEEP_TRANSFORM')
+
+    # Delete the children
+    for child in children:
+        bpy.data.objects.remove(child, do_unlink=True)
+
+def  setNewTexture(plane_obj, img_path):
+    material = plane_obj.data.materials[0]
+
+    # Check if the material has a texture node
+    if material and material.use_nodes:
+        texture_node = None
+        for node in material.node_tree.nodes:
+            if node.type == 'TEX_IMAGE':
+                texture_node = node
+                break
+
+        # Update the texture image
+        if texture_node:
+            texture_node.image = bpy.data.images.load(img_path)
+        else:
+            print("No image texture node found in the material.")
+
+def post_frame_change_handler(scene): #executes after a new keyframe loaded
+    current_frame_number = scene.frame_current
+    lfr_prp = scene.lfr_properties
+
+    if current_frame_number < len(lfr_prp.cameras):
+        if lfr_prp.pinhole_view:
+            lfr_prp.pinhole_frame_obj.location = lfr_prp.cam_obj.location
+            full_img_path = lfr_prp.cameras_path + lfr_prp.cameras[current_frame_number].image_file
+            setNewTexture(lfr_prp.pinhole_frame_obj, full_img_path)
+        #else
+            #remove_children(lfr_prp.frames_root_obj) #remove any object in parent if any exist at all
+            #child_frame = createImgWithShaderAndModifier(lfr_prp.cam_obj, lfr_prp.cameras_path, lfr_prp.cameras[current_frame_number].image_file, lfr_prp.dem_mesh_obj.name)
+            #add_child(lfr_prp.frames_root_obj, child_frame)
+
+#---------------------------------
 class LFRPanel(bpy.types.Panel):
     bl_label = "Light Field Renderer"
     bl_idname = "PT_Bambi_LFR"
@@ -143,6 +232,10 @@ class LFRPanel(bpy.types.Panel):
         layout.prop(addon_props, "cameras_path", text="Set Cameras Path") # Debug
         row = layout.row()
         row.operator("wm.load_data", text="Load LFR Data")
+        layout.prop(addon_props, "frames_to_interpolate", text="Amount of frames to interpolate")
+        layout.prop(addon_props, "focus", text="Focus")
+        layout.prop(addon_props, "pinhole_view", text="View as pinhole?")
+
 
 class SubPanelA(bpy.types.Panel):
     bl_label = "SubPanel Test A"
@@ -179,6 +272,8 @@ def unregister():
     bpy.utils.unregister_class(LoadLFRDataOperator)
     bpy.utils.unregister_class(LFRPanel)
     bpy.utils.unregister_class(SubPanelA)
+    if post_frame_change_handler in bpy.app.handlers.frame_change_post:
+        bpy.app.handlers.frame_change_post.remove(post_frame_change_handler)
 
     
 if __name__ == "__main__":

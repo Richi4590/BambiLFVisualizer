@@ -3,7 +3,7 @@ from mathutils import *
 D = bpy.data
 C = bpy.context
 
-def createImageWithShaderAndShrinkwrapModifier(rendering_cam, cameras_path, image_name, target_mesh_name):
+def createImgWithShaderAndModifier(rendering_cam, cameras_path, image_name, target_mesh_name):
     image_path = cameras_path + image_name
 
     # Import the image as a plane
@@ -25,6 +25,8 @@ def createImageWithShaderAndShrinkwrapModifier(rendering_cam, cameras_path, imag
 
     #create a couple of subdivisions and temporary set scale
     bpy.ops.object.mode_set(mode="EDIT") 
-    bpy.ops.mesh.subdivide(number_cuts=7) 
+    #bpy.ops.mesh.subdivide(number_cuts=7) 
     plane_object.location = rendering_cam.location
     plane_object.scale = (20, 20, 1)
+
+    return plane_object

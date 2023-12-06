@@ -71,7 +71,8 @@ def parse_poses(posesUrl):
 
     return cameras
 
-def createCurveDataOutOfCameras(cameras_collection):
+def createCurveDataAndKeyFramesOutOfCameras(cameras_collection):
+    bpy.ops.object.mode_set(mode='OBJECT')
     # Create a follower camera object
     bpy.ops.object.camera_add(location=cameras_collection[0].position[:])  # Convert to tuple
     camera_obj = bpy.context.active_object
@@ -93,7 +94,7 @@ def createCurveDataOutOfCameras(cameras_collection):
         # Add a control point for the path
         bpy.ops.object.mode_set(mode='EDIT') # currently selected object is path
         bpy.ops.curve.vertex_add(location=camera_data.position)
-        bpy.ops.curve.decimate(ratio=0.8)     # Add Simplify Curve modifier
+        #bpy.ops.curve.decimate(ratio=0.8)     # Add Simplify Curve modifier
         bpy.ops.object.mode_set(mode='OBJECT')
         bpy.context.scene.frame_set(frame)
 
@@ -105,8 +106,5 @@ def createCurveDataOutOfCameras(cameras_collection):
         camera_obj.keyframe_insert(data_path="location", index=-1)
         camera_obj.keyframe_insert(data_path="rotation_quaternion", index=-1)
         camera_obj.data.keyframe_insert(data_path="lens", index=-1)  # Keyframe for focal length
-
-
-    bpy.context.scene.frame_set(0) # set to frame 0 again
     return camera_obj
     
