@@ -43,14 +43,8 @@ class CameraDataPropertyGroup(bpy.types.PropertyGroup):
         default="",
     )
 
-#maybe irrelevant
-class CurveDataPropertyGroup(bpy.types.PropertyGroup):
-    curve_name: bpy.props.StringProperty()
-    curve: bpy.props.PointerProperty(type=bpy.types.Object)
-
 class LFRProperties(bpy.types.PropertyGroup):
     cameras: bpy.props.CollectionProperty(type=CameraDataPropertyGroup)
-    curve_data: bpy.props.CollectionProperty(type=CurveDataPropertyGroup) #maybe irrelevant
     dem_mesh_obj: bpy.props.PointerProperty(type=bpy.types.Object)
     cam_obj: bpy.props.PointerProperty(type=bpy.types.Object)
     pinhole_frame_obj: bpy.props.PointerProperty(type=bpy.types.Object) # when only watchin 1 frame at a time, its only 1x plane, 
@@ -58,9 +52,16 @@ class LFRProperties(bpy.types.PropertyGroup):
     pinhole_view: bpy.props.BoolProperty(default=True)
     
     # amount of frames to be used to "interpolate"
+    every_nth_frame: bpy.props.IntProperty(
+        default=1,
+        min=1,
+        max=100
+    )
+
+    # amount of frames to be used to "interpolate"
     frames_to_interpolate: bpy.props.IntProperty(
-        default=0,
-        min=0,
+        default=1,
+        min=1,
         max=100
     )
 
@@ -82,14 +83,20 @@ class LFRProperties(bpy.types.PropertyGroup):
     dem_path: bpy.props.StringProperty(
         name="DEM Path",
         subtype='FILE_PATH',
-        default="E:/u_Semester_Project/Data/Parkplatz_1ms/Data/dem/dem_mesh_r2.glb", 
+        default="E:/u_Semester_Project/Data/dem/dem_mesh_r2.glb", 
     )
 
     cameras_path: bpy.props.StringProperty(
         name="CAMERAS Path",
         subtype='FILE_PATH',
-        default="E:/u_Semester_Project/Data/Parkplatz_1ms/Frames_T/", 
+        default="E:/u_Semester_Project/Parkplatz_1ms/Frames_T/", 
     )
+
+def purge_all_addon_property_data(context):
+    lfr_props = context.scene.lfr_properties
+    # Iterate over the collection and remove all items
+    for item in lfr_props.cameras:
+        lfr_props.cameras.remove(0)
 
 class LoadLFRDataOperator(bpy.types.Operator):
     bl_idname = "wm.load_data"
@@ -99,7 +106,10 @@ class LoadLFRDataOperator(bpy.types.Operator):
         if post_frame_change_handler in bpy.app.handlers.frame_change_post:
             bpy.app.handlers.frame_change_post.remove(post_frame_change_handler)
 
+        bpy.ops.outliner.orphans_purge(do_local_ids=True, do_linked_ids=True, do_recursive=True)
         util.clear_scene_except_lights()
+        purge_all_addon_property_data(context)
+
         lfr_props = context.scene.lfr_properties
         lfr_props.dem_mesh_obj = dem.import_dem(lfr_props.dem_path, rotation=(0, 0, 0)) #euler rotation
 
@@ -107,7 +117,7 @@ class LoadLFRDataOperator(bpy.types.Operator):
         cameras_collection.clear()
 
         # Add a new camera data item to the collection
-        camerasData = parse_poses(lfr_props.cameras_path)
+        camerasData = parse_poses(lfr_props.cameras_path, lfr_props.every_nth_frame)
 
         #print(camerasData[0]["fovy"]) #debug
 
@@ -141,6 +151,10 @@ class LoadLFRDataOperator(bpy.types.Operator):
             bpy.app.handlers.frame_change_post.append(post_frame_change_handler)
             lfr_props.pinhole_frame_obj = createImgWithShaderAndModifier(lfr_props.cam_obj, lfr_props.cameras_path, lfr_props.cameras[0].image_file, lfr_props.dem_mesh_obj.name) #create a plane once
             bpy.context.scene.frame_set(0) # set to frame 0 again, triggers post_frame_change_handler() once
+
+            full_img_path = lfr_props.cameras_path + lfr_props.cameras[0].image_file
+            mask_img_path = "E:/u_Semester_Project/Data/Parkplatz_1ms/Frames_T/mask_T.png"
+            create_overlay_material(lfr_props.pinhole_frame_obj, full_img_path, mask_img_path)
 
             #print(cameras_collection[0].quaternion[0], cameras_collection[0].quaternion[1], cameras_collection[0].quaternion[2]) #debug
 
@@ -184,22 +198,83 @@ def remove_children(parent):
     for child in children:
         bpy.data.objects.remove(child, do_unlink=True)
 
-def  setNewTexture(plane_obj, img_path):
-    material = plane_obj.data.materials[0]
+def create_overlay_material(plane_obj, img_path, mask_img_path):
+    
+    obj = plane_obj
 
-    # Check if the material has a texture node
-    if material and material.use_nodes:
-        texture_node = None
-        for node in material.node_tree.nodes:
-            if node.type == 'TEX_IMAGE':
-                texture_node = node
-                break
+    # Check if the object has a material
+    if len(obj.data.materials) > 0:
 
-        # Update the texture image
-        if texture_node:
-            texture_node.image = bpy.data.images.load(img_path)
-        else:
-            print("No image texture node found in the material.")
+        if "overlay" not in obj.data.materials:
+            new_material = bpy.data.materials.new(name="overlay")
+            new_material.use_nodes = True  # If True, the material will use the node editor
+            bpy.context.scene.collection.objects.link(obj)
+            obj.data.materials.clear()
+            obj.data.materials.append(new_material)
+
+        new_material.blend_method = 'CLIP'
+
+        # Assume the object has only one material (change index if multiple materials)
+        active_material = obj.data.materials[0] #new material
+
+        # Clear all existing nodes from the material node tree
+        for node in active_material.node_tree.nodes:
+            active_material.node_tree.nodes.remove(node)
+
+        # Define the file paths for your two textures
+        base_color_texture_path = img_path
+        alpha_texture_path = mask_img_path
+
+        # Create two texture nodes and load the textures
+        base_color_texture_node = active_material.node_tree.nodes.new(type='ShaderNodeTexImage')
+        base_color_texture_node.location = (0, 0)
+        base_color_texture_node.image = bpy.data.images.load(base_color_texture_path)
+        base_color_texture_node.name = "base_color_frame_texture"
+
+        alpha_texture_node = active_material.node_tree.nodes.new(type='ShaderNodeTexImage')
+        alpha_texture_node.location = (350, 0)
+        alpha_texture_node.image = bpy.data.images.load(alpha_texture_path)
+
+        # Create a Principled BSDF shader node
+        principled_shader_node = active_material.node_tree.nodes.new(type='ShaderNodeBsdfPrincipled')
+        principled_shader_node.location = (850, 0)
+
+        # Create an Output Material node
+        material_output_node = active_material.node_tree.nodes.new(type='ShaderNodeOutputMaterial')
+        material_output_node.location = (1200, 0)
+
+        # Link nodes in the material node tree
+        active_material.node_tree.links.new(base_color_texture_node.outputs["Color"], principled_shader_node.inputs["Base Color"])
+        active_material.node_tree.links.new(alpha_texture_node.outputs["Color"], principled_shader_node.inputs["Alpha"])
+        active_material.node_tree.links.new(principled_shader_node.outputs["BSDF"], material_output_node.inputs["Surface"])
+
+        print(f"Material '{active_material.name}' updated successfully with two textures.")
+    else:
+        print("No material assigned to the active object.")
+
+
+def update_overlay_material(plane_obj, img_path):
+    
+    obj = plane_obj
+
+    # Check if the object has a material
+    if len(obj.data.materials) > 0:
+        for mat in obj.data.materials:
+            if "overlay" in mat.name:
+                active_material = obj.data.materials[0] #new material
+
+                nodes = active_material.node_tree.nodes                 # Get the shader nodes of the material
+                #alpha_texture_path = mask_img_path
+                base_color_texture_node = nodes.get('base_color_frame_texture')
+
+                loaded_img = bpy.data.images.load(img_path)
+                
+                if base_color_texture_node.image:
+                    bpy.data.images.remove(base_color_texture_node.image, do_unlink=True)
+                    base_color_texture_node.image = None
+                
+                base_color_texture_node.image = loaded_img
+
 
 def post_frame_change_handler(scene): #executes after a new keyframe loaded
     current_frame_number = scene.frame_current
@@ -209,7 +284,8 @@ def post_frame_change_handler(scene): #executes after a new keyframe loaded
         if lfr_prp.pinhole_view:
             lfr_prp.pinhole_frame_obj.location = lfr_prp.cam_obj.location
             full_img_path = lfr_prp.cameras_path + lfr_prp.cameras[current_frame_number].image_file
-            setNewTexture(lfr_prp.pinhole_frame_obj, full_img_path)
+            update_overlay_material(lfr_prp.pinhole_frame_obj, full_img_path)
+            #createNewUV(lfr_prp.dem_mesh_obj)
         #else
             #remove_children(lfr_prp.frames_root_obj) #remove any object in parent if any exist at all
             #child_frame = createImgWithShaderAndModifier(lfr_prp.cam_obj, lfr_prp.cameras_path, lfr_prp.cameras[current_frame_number].image_file, lfr_prp.dem_mesh_obj.name)
@@ -230,6 +306,7 @@ class LFRPanel(bpy.types.Panel):
         layout.prop(addon_props, "folder_path", text="Set Data Path")
         layout.prop(addon_props, "dem_path", text="Set DEM Path") # Debug
         layout.prop(addon_props, "cameras_path", text="Set Cameras Path") # Debug
+        layout.prop(addon_props, "every_nth_frame", text="Use every n frame")
         row = layout.row()
         row.operator("wm.load_data", text="Load LFR Data")
         layout.prop(addon_props, "frames_to_interpolate", text="Amount of frames to interpolate")
@@ -255,7 +332,6 @@ class SubPanelA(bpy.types.Panel):
 def register():
     addon_utils.enable('io_import_images_as_planes', default_set=True, persistent=True, handle_error=None)
     bpy.utils.register_class(CameraDataPropertyGroup)
-    bpy.utils.register_class(CurveDataPropertyGroup)
     bpy.utils.register_class(LFRProperties)
     bpy.types.Scene.lfr_properties = bpy.props.PointerProperty(type=LFRProperties)
     bpy.utils.register_class(LoadLFRDataOperator)
@@ -266,7 +342,6 @@ def register():
 def unregister():
     addon_utils.disable('io_import_images_as_planes', default_set=False, handle_error=None)
     bpy.utils.unregister_class(CameraDataPropertyGroup)
-    bpy.utils.unregister_class(CurveDataPropertyGroup)
     bpy.utils.unregister_class(LFRProperties)
     del bpy.types.Scene.lfr_properties
     bpy.utils.unregister_class(LoadLFRDataOperator)

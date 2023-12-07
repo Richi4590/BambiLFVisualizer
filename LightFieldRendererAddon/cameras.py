@@ -6,7 +6,7 @@ from mathutils import *
 D = bpy.data
 C = bpy.context
 
-def parse_poses(posesUrl):
+def parse_poses(posesUrl, nth_frame):
 
     posesUrl += "matched_poses.json"
 
@@ -23,10 +23,11 @@ def parse_poses(posesUrl):
         return
     
     cameras = []
+
     i = 0
 
     for pose in frames:
-        if i % 15 == 0:
+        if i % nth_frame == 0:
             quat = Quaternion()
 
             if len(pose["rotation"]) == 4:
@@ -87,6 +88,7 @@ def createCurveDataAndKeyFramesOutOfCameras(cameras_collection):
 
     # Link the path to the scene
     bpy.context.scene.collection.objects.link(path)
+    bpy.context.scene.frame_end = len(cameras_collection)
 
     # Set keyframes for the camera location
     for i, camera_data in enumerate(cameras_collection):
@@ -94,7 +96,7 @@ def createCurveDataAndKeyFramesOutOfCameras(cameras_collection):
         # Add a control point for the path
         bpy.ops.object.mode_set(mode='EDIT') # currently selected object is path
         bpy.ops.curve.vertex_add(location=camera_data.position)
-        #bpy.ops.curve.decimate(ratio=0.8)     # Add Simplify Curve modifier
+        bpy.ops.curve.decimate(ratio=0.3)     # Add Simplify Curve modifier
         bpy.ops.object.mode_set(mode='OBJECT')
         bpy.context.scene.frame_set(frame)
 

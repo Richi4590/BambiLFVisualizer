@@ -27,6 +27,7 @@ def import_dem(dem_path, rotation):
         # Set the rotation of the imported object
         obj.rotation_euler = rotation_radians
         #bpy.ops.object.origin_set(type='GEOMETRY_ORIGIN', center='BOUNDS')
+        bpy.ops.object.shade_smooth(use_auto_smooth=False, auto_smooth_angle=0.523599)
 
         return obj
     else:

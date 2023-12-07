@@ -14,6 +14,7 @@ def createImgWithShaderAndModifier(rendering_cam, cameras_path, image_name, targ
 
     # Add and configure Shrinkwrap modifier
     bpy.ops.object.mode_set(mode="OBJECT")     
+    bpy.ops.object.shade_smooth(use_auto_smooth=False, auto_smooth_angle=0.523599)
     bpy.ops.object.modifier_add(type='SHRINKWRAP')     
     shrinkwrap_modifier = plane_object.modifiers["Shrinkwrap"]
     shrinkwrap_modifier.target = bpy.data.objects[target_mesh_name]
@@ -21,12 +22,13 @@ def createImgWithShaderAndModifier(rendering_cam, cameras_path, image_name, targ
     shrinkwrap_modifier.wrap_mode = "ABOVE_SURFACE"
     shrinkwrap_modifier.use_positive_direction = True
     shrinkwrap_modifier.use_negative_direction = True
-    shrinkwrap_modifier.offset = 0.65
+    shrinkwrap_modifier.offset = 0.65 
 
     #create a couple of subdivisions and temporary set scale
     bpy.ops.object.mode_set(mode="EDIT") 
-    #bpy.ops.mesh.subdivide(number_cuts=7) 
+    bpy.ops.mesh.subdivide(number_cuts=7) 
     plane_object.location = rendering_cam.location
-    plane_object.scale = (20, 20, 1)
+    plane_object.scale = (34, 34, 1)
+
 
     return plane_object
