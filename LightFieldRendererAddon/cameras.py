@@ -75,13 +75,13 @@ def parse_poses(posesUrl, nth_frame):
 def createCurveDataAndKeyFramesOutOfCameras(cameras_collection):
     bpy.ops.object.mode_set(mode='OBJECT')
     # Create a follower camera object
-    bpy.ops.object.camera_add(location=cameras_collection[0].position[:])  # Convert to tuple
+    bpy.ops.object.camera_add(location=cameras_collection[0].location[:])  # Convert to tuple
     camera_obj = bpy.context.active_object
     bpy.context.scene.camera = camera_obj # Set the active camera in the scene
     bpy.context.scene.collection.objects.link(camera_obj)     # Link the camera to the scene
 
     # Create a path
-    first_cam_location = cameras_collection[0].position
+    first_cam_location = cameras_collection[0].location
     bpy.ops.curve.primitive_bezier_curve_add(enter_editmode=False, align='WORLD', location=first_cam_location)
     path = bpy.context.active_object
     path.name = "LFR_Path"
@@ -95,12 +95,12 @@ def createCurveDataAndKeyFramesOutOfCameras(cameras_collection):
         frame = i + 1
         # Add a control point for the path
         bpy.ops.object.mode_set(mode='EDIT') # currently selected object is path
-        bpy.ops.curve.vertex_add(location=camera_data.position)
+        bpy.ops.curve.vertex_add(location=camera_data.location)
         bpy.ops.curve.decimate(ratio=0.3)     # Add Simplify Curve modifier
         bpy.ops.object.mode_set(mode='OBJECT')
         bpy.context.scene.frame_set(frame)
 
-        camera_obj.location = camera_data.position
+        camera_obj.location = camera_data.location
         camera_obj.rotation_mode = 'QUATERNION'
         camera_obj.rotation_quaternion = camera_data.quaternion
         camera_obj.data.lens = camera_data.fovy  # Set the focal length (not FOV)
