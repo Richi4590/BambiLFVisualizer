@@ -54,17 +54,3 @@ def purge_all_addon_property_data(context):
     # Iterate over the collection and remove all items
     for item in lfr_props.cameras:
         lfr_props.cameras.remove(0)
-    
-    for item in lfr_props.range_planes_collection:
-        lfr_props.range_planes_collection.remove(0)
-
-def delete_objects_in_range_collection(collection_property):
-    for item in collection_property:
-        if item.plane != None:
-            object_name = item.plane.name
-
-            # Check if the object exists in the scene
-            obj = bpy.data.objects.get(object_name)
-            if obj:
-                # Unlink and delete the object
-                bpy.data.objects.remove(obj, do_unlink=True)

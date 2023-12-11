@@ -73,10 +73,11 @@ def parse_poses(posesUrl, nth_frame):
     return cameras
 
 def createCurveDataAndKeyFramesOutOfCameras(cameras_collection):
-    bpy.ops.object.mode_set(mode='OBJECT')
     # Create a follower camera object
     bpy.ops.object.camera_add(location=cameras_collection[0].location[:])  # Convert to tuple
     camera_obj = bpy.context.active_object
+    bpy.ops.object.mode_set(mode='OBJECT')
+
     bpy.context.scene.camera = camera_obj # Set the active camera in the scene
     bpy.context.scene.collection.objects.link(camera_obj)     # Link the camera to the scene
 

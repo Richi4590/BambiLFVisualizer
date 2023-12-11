@@ -73,7 +73,7 @@ class LoadLFRDataOperator(bpy.types.Operator):
             bpy.app.handlers.frame_change_post.append(post_frame_change_handler)
             lfr_props.pinhole_frame_obj = createImgWithShaderAndModifier(lfr_props.cam_obj, lfr_props.cameras_path, lfr_props.cameras[0].image_file, lfr_props.dem_mesh_obj.name) #create a plane once
             
-            checkIfPinhole(self, context)
+            lfr_props.pinhole_view = lfr_props.pinhole_view
             
             bpy.context.scene.frame_set(1) # set to frame 1 again, triggers post_frame_change_handler() once
 
@@ -106,10 +106,8 @@ def post_frame_change_handler(scene): #executes after a new keyframe loaded
             update_overlay_material_path(lfr_prp.pinhole_frame_obj, full_img_path)
             #createNewUV(lfr_prp.dem_mesh_obj)
         else:
-            #remove_children(lfr_prp.frames_root_obj) #remove any object in parent if any exist at all
-            #child_frame = createImgWithShaderAndModifier(lfr_prp.cam_obj, lfr_prp.cameras_path, lfr_prp.cameras[current_frame_number].image_file, lfr_prp.dem_mesh_obj.name)
-            #add_child(lfr_prp.frames_root_obj, child_frame)
-            applyImagesAndPositionsToPlanesFromRange(lfr_prp, current_frame_number)
+            resultImg = applyImagesAndPositionsToPlanesFromRange(lfr_prp, current_frame_number)
+            update_overlay_material_tex(lfr_prp.pinhole_frame_obj, resultImg)
  
 #---------------------------------
 class LFRPanel(bpy.types.Panel):

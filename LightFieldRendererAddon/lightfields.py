@@ -1,6 +1,10 @@
 import bpy
 from mathutils import *
 from . plane import *
+import os
+from mathutils import Vector
+from bpy_extras.image_utils import load_image
+
 
 try:
     from PIL import Image, ImageFilter
@@ -99,14 +103,11 @@ def applyImagesAndPositionsToPlanesFromRange(lfr_prp, start_keyframe_index):
     frame_range = lfr_prp.range_to_interpolate
     dem_mesh_obj = lfr_prp.dem_mesh_obj
     end_index = start_keyframe_index + frame_range
-    range_planes_collection = lfr_prp.range_planes_collection
 
     if end_index > len(cameras_data_arr):
         end_index = len(cameras_data_arr)
 
     #print(len(cameras_data_arr))
-
-
 
     j = 0
     for entry in range(start_keyframe_index, end_index):
@@ -116,13 +117,6 @@ def applyImagesAndPositionsToPlanesFromRange(lfr_prp, start_keyframe_index):
         frame = bpy.data.images.load(img_path)
 
         #do something with the images
-
-        if j == 0: # never removing the first pinhole_frame_obj -> reusing it
-            update_overlay_material_tex(pinhole_frame_obj, frame)
-        else:
-            range_planes_collection[j - 1].plane.location = cameras_data_arr[start_keyframe_index + j - 1].location
-            update_overlay_material_tex(range_planes_collection[j - 1].plane, frame)
-
 
         frame.user_clear()
         bpy.data.images.remove(frame)

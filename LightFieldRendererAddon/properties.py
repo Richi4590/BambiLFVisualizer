@@ -35,31 +35,10 @@ class CameraDataPropertyGroup(bpy.types.PropertyGroup):
         default="",
     )
 
-def checkIfPinhole(self, context):
-    lfr_prp = context.scene.lfr_properties
-    isPinholeView = lfr_prp.pinhole_view
-
-    if isPinholeView:
-        delete_objects_in_range_collection(context.scene.lfr_properties.range_planes_collection)
-        for item in lfr_prp.range_planes_collection:
-            lfr_prp.range_planes_collection.remove(0)
-
-    else:
-        cameras_path = lfr_prp.cameras_path
-        dem_mesh_obj = lfr_prp.dem_mesh_obj
-        camExampleData = lfr_prp.cameras[0]
-
-        for i in range(1, 100):
-            new_plane = lfr_prp.range_planes_collection.add()
-            new_plane.plane = createImgWithShaderAndModifier(lfr_prp.cam_obj, cameras_path, camExampleData.image_file, dem_mesh_obj.name)
-            new_plane.plane.name = "range_plane_" + str(i)
-
-    bpy.data.objects[lfr_prp.cam_obj.name].select_set(True) # have camera selected after loading
-
 def onPinholeValueChange(self, context):
-
-    checkIfPinhole(self, context)
+    lfr_prp = context.scene.lfr_properties
     bpy.context.scene.frame_set(context.scene.frame_current)
+    bpy.data.objects[lfr_prp.cam_obj.name].select_set(True) # have camera selected after loading
 
 class LFRProperties(bpy.types.PropertyGroup):
     cameras: bpy.props.CollectionProperty(type=CameraDataPropertyGroup)
@@ -92,8 +71,6 @@ class LFRProperties(bpy.types.PropertyGroup):
         max=50
     )  
 
-    range_planes_collection: bpy.props.CollectionProperty(type=PlanePropertyGroup)
-
     folder_path: bpy.props.StringProperty(
         name="Folder Path",
         subtype='DIR_PATH',
@@ -104,11 +81,11 @@ class LFRProperties(bpy.types.PropertyGroup):
     dem_path: bpy.props.StringProperty(
         name="DEM Path",
         subtype='FILE_PATH',
-        default="E:/u_Semester_Project/Data/dem/dem_mesh_r2.glb", 
+        default="E:/u_Semester_Project/Data/Parkplatz_1ms/Data/dem/", 
     )
 
     cameras_path: bpy.props.StringProperty(
         name="CAMERAS Path",
         subtype='FILE_PATH',
-        default="E:/u_Semester_Project/Parkplatz_1ms/Frames_T/", 
+        default="E:/u_Semester_Project/Data/Parkplatz_1ms/Frames_T/", 
     )
