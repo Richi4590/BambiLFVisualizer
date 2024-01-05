@@ -28,18 +28,19 @@ class LoadLFRDataOperator(bpy.types.Operator):
         if post_frame_change_handler in bpy.app.handlers.frame_change_post:
             bpy.app.handlers.frame_change_post.remove(post_frame_change_handler)
 
-        bpy.ops.outliner.orphans_purge(do_local_ids=True, do_linked_ids=True, do_recursive=True) #slight memory clean up
         util.clear_scene()
+        bpy.ops.outliner.orphans_purge(do_local_ids=True, do_linked_ids=True, do_recursive=True) #slight memory clean up
         purge_all_addon_property_data(context)
 
-        lfr_props = context.scene.lfr_properties
-        lfr_props.dem_mesh_obj = dem.import_dem(lfr_props.dem_path, rotation=(0, 0, 0)) #euler rotation
+        lfr_prp = context.scene.lfr_properties
+        lfr_prp.dem_mesh_obj = dem.import_dem(lfr_prp.dem_path, rotation=(0, 0, 0)) #euler rotation
+        lfr_prp.img_mask = "E:/u_Semester_Project/Data/Parkplatz_1ms/Frames_T/mask_T.png"
 
-        cameras_collection = lfr_props.cameras
+        cameras_collection = lfr_prp.cameras
         cameras_collection.clear()
 
         # Add a new camera data item to the collection
-        camerasData = parse_poses(lfr_props.cameras_path, lfr_props.every_nth_frame)
+        camerasData = parse_poses(lfr_prp.cameras_path, lfr_prp.every_nth_frame)
 
         #print(camerasData[0]["fovy"]) #debug
 
@@ -66,59 +67,62 @@ class LoadLFRDataOperator(bpy.types.Operator):
                 new_camera.image_file = camData["image_file"]
                 new_camera.timestamp = camTimeStamp
 
+            if (context.scene.frame_current > len(cameras_collection)-1): 
+                bpy.context.scene.frame_set(1)
+
             #print(lfr_props.cameras) #debug
+            initStartupObjects(self, context) # generates main camera and potentially a projection plane
 
-            lfr_props.cam_obj = createCurveDataAndKeyFramesOutOfCameras(cameras_collection) # rendering camera gets generated inside
+            createCurveDataAndKeyFramesOutOfCameras(lfr_prp) # rendering camera gets generated inside
+
+
+
             #print(lfr_props.cam_obj.name) #debug
-            bpy.app.handlers.frame_change_post.append(post_frame_change_handler)
-            lfr_props.pinhole_frame_obj = createImgWithShaderAndModifier(lfr_props.cam_obj, lfr_props.cameras_path, lfr_props.cameras[0].image_file, lfr_props.dem_mesh_obj.name) #create a plane once
-            
-            lfr_props.pinhole_view = lfr_props.pinhole_view
-            
-            bpy.context.scene.frame_set(1) # set to frame 1 again, triggers post_frame_change_handler() once
+            bpy.app.handlers.frame_change_post.append(post_frame_change_handler) 
+            lfr_prp.pinhole_view = lfr_prp.pinhole_view # generation of plane is done in properties.py
 
-            full_img_path = lfr_props.cameras_path + lfr_props.cameras[0].image_file
-            mask_img_path = "E:/u_Semester_Project/Data/Parkplatz_1ms/Frames_T/mask_T.png"
-            create_overlay_material(lfr_props.pinhole_frame_obj, full_img_path, mask_img_path)
+            bpy.context.scene.frame_set(1)
+
+            # test------
+            # cameras_path = lfr_props.cameras_path
+            # full_img_path = cameras_path + cameras_collection[5].image_file
+            # tempcam = createAndPrepareANewCamera(lfr_props, full_img_path, lfr_props.img_mask, 1) # test
+            # tempcam.location = lfr_props.cam_obj.location
 
             #print(cameras_collection[0].quaternion[0], cameras_collection[0].quaternion[1], cameras_collection[0].quaternion[2]) #debug
 
             bpy.ops.object.mode_set(mode="OBJECT")    
             bpy.ops.object.select_all(action='DESELECT') # deselect everything
-            bpy.data.objects[lfr_props.cam_obj.name].select_set(True) # have camera selected after loading
+            bpy.data.objects[lfr_prp.cam_obj.name].select_set(True) # have camera selected after loading
         return {'FINISHED'}
 
+class RenderRangeOfImagesOperator(bpy.types.Operator):
+    bl_idname = "wm.render_image_range"
+    bl_label = "Render Image Range"
+
+    def execute(self, context):
+        lfr_prp = context.scene.lfr_properties
+        current_frame_number = context.scene.frame_current-1
+
+        #----
+        if post_frame_change_handler in bpy.app.handlers.frame_change_post:
+            bpy.app.handlers.frame_change_post.remove(post_frame_change_handler)
+
+        img_tex = applyImagesAndPositionsToPlanesFromRange3(lfr_prp, current_frame_number)
+        
+        bpy.app.handlers.frame_change_post.append(post_frame_change_handler) 
+        #----
+
+        update_projection_material_tex(lfr_prp.projection_mesh_obj.data.materials[0], img_tex)
+        return {'FINISHED'}
 #---------------------------------
 
-#---------------------------------
-
-
-def post_frame_change_handler(scene): #executes after a new keyframe loaded
-    current_frame_number = scene.frame_current
-    lfr_prp = scene.lfr_properties
-
-    if current_frame_number >= 1 and current_frame_number < len(lfr_prp.cameras):
-
-        lfr_prp.pinhole_frame_obj.location = lfr_prp.cam_obj.location
-
-        if lfr_prp.pinhole_view:
-            full_img_path = lfr_prp.cameras_path + lfr_prp.cameras[current_frame_number].image_file
-            update_overlay_material_path(lfr_prp.pinhole_frame_obj, full_img_path)
-            #createNewUV(lfr_prp.dem_mesh_obj)
-        else:
-            resultImg = applyImagesAndPositionsToPlanesFromRange(lfr_prp, current_frame_number)
-            update_overlay_material_tex(lfr_prp.pinhole_frame_obj, resultImg)
- 
-#---------------------------------
 class LFRPanel(bpy.types.Panel):
     bl_label = "Light Field Renderer"
     bl_idname = "PT_Bambi_LFR"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "LFR"
-
-    def printTests():
-        print("Test")
 
     def draw(self, context):
         layout = self.layout
@@ -132,6 +136,8 @@ class LFRPanel(bpy.types.Panel):
         row.operator("wm.load_data", text="Load LFR Data")
         layout.prop(addon_props, "range_to_interpolate", text="Amount of frames to interpolate")
         layout.prop(addon_props, "focus", text="Focus")
+        row = layout.row()
+        row.operator("wm.render_image_range", text="Render Range of Images")
         layout.prop(addon_props, "pinhole_view", text="View as pinhole?")
 
 
@@ -157,6 +163,7 @@ def register():
     bpy.utils.register_class(LFRProperties)
     bpy.types.Scene.lfr_properties = bpy.props.PointerProperty(type=LFRProperties)
     bpy.utils.register_class(LoadLFRDataOperator)
+    bpy.utils.register_class(RenderRangeOfImagesOperator)
     bpy.utils.register_class(LFRPanel)
     bpy.utils.register_class(SubPanelA)
 
@@ -168,6 +175,7 @@ def unregister():
     bpy.utils.unregister_class(LFRProperties)
     del bpy.types.Scene.lfr_properties
     bpy.utils.unregister_class(LoadLFRDataOperator)
+    bpy.utils.unregister_class(RenderRangeOfImagesOperator)
     bpy.utils.unregister_class(LFRPanel)
     bpy.utils.unregister_class(SubPanelA)
     if post_frame_change_handler in bpy.app.handlers.frame_change_post:

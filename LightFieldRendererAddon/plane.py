@@ -1,5 +1,7 @@
+import math
 import bpy
 from mathutils import *
+from . util import *
 D = bpy.data
 C = bpy.context
 
@@ -37,6 +39,102 @@ def remove_children(parent):
     for child in children:
         bpy.data.objects.remove(child, do_unlink=True)
 
+def create_singular_giant_plane(source_obj, full_image_path, full_mask_path):
+    # Check if the source object exists
+    if source_obj:
+        # Duplicate the source object
+        new_obj = source_obj.copy()    
+        new_obj.data = source_obj.data.copy()
+        new_obj.name = "Plane"
+        bpy.context.collection.objects.link(new_obj)
+
+        bpy.ops.object.select_all(action='DESELECT')
+        new_obj.select_set(True)    
+        bpy.context.view_layer.objects.active = new_obj
+        
+        offset_vector = Vector((0.0, -4.0, 0.0))
+        new_obj.location += offset_vector
+
+        ##### remove materials
+        for material_slot in range(len(new_obj.material_slots)):
+            new_obj.active_material_index = material_slot
+            bpy.ops.object.material_slot_remove()
+
+        # Create a new material for the new object
+        new_material = bpy.data.materials.new(name="overlay")
+        new_material.blend_method = 'CLIP'
+        new_obj.data.materials.append(new_material)
+
+        # Use the new material in all material slots
+        for material_slot in new_obj.material_slots:
+            material_slot.material = new_material
+
+        # Set up the material nodes for the new material
+        new_material.use_nodes = True
+        new_tree = new_material.node_tree
+        new_tree.nodes.clear()
+        #####
+
+        # Create nodes
+        tex_coord_node = new_tree.nodes.new(type='ShaderNodeTexCoord')
+        mapping_node = new_tree.nodes.new(type='ShaderNodeMapping')
+        image_texture_node = new_tree.nodes.new(type='ShaderNodeTexImage')
+        mask_texture_node = new_tree.nodes.new(type='ShaderNodeTexImage')
+        principled_node = new_tree.nodes.new(type='ShaderNodeBsdfPrincipled')
+        material_output_node = new_tree.nodes.new(type='ShaderNodeOutputMaterial')
+
+        mapping_node.vector_type = 'TEXTURE' # set mapping type to texture
+        rotation_radians = [math.radians(deg) for deg in (90, 0, 0)]
+        mapping_node.inputs[2].default_value = rotation_radians
+
+        # Link nodes
+        links = new_material.node_tree.links
+        links.new(tex_coord_node.outputs["Generated"], mapping_node.inputs[0])
+        links.new(mapping_node.outputs[0], image_texture_node.inputs[0])
+        links.new(mapping_node.outputs[0], mask_texture_node.inputs[0])
+        links.new(image_texture_node.outputs["Color"], principled_node.inputs["Base Color"])
+        links.new(mask_texture_node.outputs["Color"], principled_node.inputs["Alpha"])
+        links.new(principled_node.outputs["BSDF"], material_output_node.inputs["Surface"])
+
+        # Set up image texture
+        image_texture_node.image = bpy.data.images.load(full_image_path)
+        image_texture_node.name = "base_color_frame_texture"
+        mask_texture_node.image = bpy.data.images.load(full_mask_path)
+        image_texture_node.extension = 'CLIP'
+        mask_texture_node.extension = 'CLIP'
+
+        # Update the new object
+        new_obj.data.update()
+        return new_obj
+
+def create_singular_giant_projection_plane(source_obj):
+    # Check if the source object exists
+    if source_obj:
+        # Duplicate the source object
+        new_obj = source_obj.copy()    
+        new_obj.data = source_obj.data.copy()
+        new_obj.name = "Plane"
+        bpy.context.collection.objects.link(new_obj)
+
+        bpy.ops.object.select_all(action='DESELECT')
+        new_obj.select_set(True)    
+        bpy.context.view_layer.objects.active = new_obj
+        
+        offset_vector = Vector((0.0, -0.5, 0.0))
+        new_obj.location += offset_vector
+
+        ##### remove materials
+        for material_slot in range(len(new_obj.material_slots)):
+            new_obj.active_material_index = material_slot
+            bpy.ops.object.material_slot_remove()
+
+        # plane with no material
+        #-each time a new camera gets generated, a new material gets assigned to this plane (camera.py)
+
+        # Update the new object
+        new_obj.data.update()
+        return new_obj
+
 def create_overlay_material(plane_obj, img_path, mask_img_path):
     
     obj = plane_obj
@@ -47,7 +145,7 @@ def create_overlay_material(plane_obj, img_path, mask_img_path):
         if "overlay" not in obj.data.materials:
             new_material = bpy.data.materials.new(name="overlay")
             new_material.use_nodes = True  # If True, the material will use the node editor
-            bpy.context.scene.collection.objects.link(obj)
+            link_obj(bpy.context.scene.collection, obj)    
             obj.data.materials.clear()
             obj.data.materials.append(new_material)
 
@@ -125,8 +223,24 @@ def update_overlay_material_tex(plane_obj, img_texture):
                 #alpha_texture_path = mask_img_path
                 base_color_texture_node = nodes.get('base_color_frame_texture')
                 
-                if base_color_texture_node.image:
+                if base_color_texture_node.image != img_texture:
                     bpy.data.images.remove(base_color_texture_node.image, do_unlink=True)
                     base_color_texture_node.image = None
                 
                 base_color_texture_node.image = img_texture
+
+def update_projection_material_tex(material, img_texture): 
+    nodes = material.node_tree.nodes # Get the shader nodes of the material
+    base_color_texture_node = None
+
+    for node in nodes:
+        if node.type == 'TEX_IMAGE':
+            if node.label == 'MainTexture': #label is the in the UI renamed name. Not the .name attribute!
+                    base_color_texture_node = node
+    
+    if (base_color_texture_node.image):
+        if base_color_texture_node.image != img_texture:
+            bpy.data.images.remove(base_color_texture_node.image, do_unlink=True)
+            base_color_texture_node.image = None
+                
+    base_color_texture_node.image = img_texture

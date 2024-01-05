@@ -1,6 +1,8 @@
 import json
 import bpy
 from mathutils import *
+import os
+
 D = bpy.data
 C = bpy.context
 
@@ -23,19 +25,14 @@ def delete_object_by_name(name):
         bpy.ops.object.delete()
 
 def clear_scene():
+    for collection in bpy.data.collections:
+        bpy.data.collections.remove(collection, do_unlink=True)
 
-    if not bpy.context.selected_objects:
-        # Create a temporary empty object
-        bpy.ops.object.select_all(action='DESELECT')
-        bpy.ops.object.empty_add()
-        bpy.context.view_layer.objects.active = bpy.context.selected_objects[-1]
+    # Iterate through all objects in the scene
+    for obj in bpy.data.objects:
+        bpy.data.objects.remove(obj, do_unlink=True)
 
-    bpy.ops.object.mode_set(mode='OBJECT')
 
-    bpy.ops.object.select_all(action='SELECT')
-
-    # Delete the selected objects
-    bpy.ops.object.delete()
 
 def getValueFromJSON(json_path, key, sub_key):
     # Load JSON data
@@ -54,3 +51,54 @@ def purge_all_addon_property_data(context):
     # Iterate over the collection and remove all items
     for item in lfr_props.cameras:
         lfr_props.cameras.remove(0)
+
+def link_obj(scene, obj):
+    if (scene not in obj.users_collection):
+        bpy.context.scene.collection.objects.link(obj)     # Link the obj if not already linked to the scene collection
+
+def append_content_from_blend_file(absolute_filepath, inner_path, content_name):
+    #----example: 
+    #file_path =  os.path.abspath('Test Blend.blend')  # blend file name
+    #inner_path = 'Material'   # type 
+    #material_name = 'Material_Name' # name
+
+    #bpy.ops.wm.append(
+    #    filepath=os.path.join(file_path, inner_path, material_name),
+    #    directory=os.path.join(file_path, inner_path),
+    #    filename=material_name
+    #    )
+
+    bpy.ops.wm.append(
+        filepath=os.path.join(absolute_filepath, inner_path, content_name),
+        directory=os.path.join(absolute_filepath, inner_path),
+        filename=content_name
+        )
+    
+def get_material_from_blend_file(relative_file_path, material_name):
+
+    current_blend_directory = os.path.dirname(os.path.abspath(__file__))
+    absolute_filepath = os.path.join(current_blend_directory, relative_file_path)
+
+    if (material_name not in bpy.data.materials):
+        # Append the material from the external blend file
+        with bpy.data.libraries.load(absolute_filepath, link=False) as (data_from, data_to):
+            if material_name in data_from.materials:
+                data_to.materials.append(data_from.materials[0])
+
+        # Get the appended material
+        appended_material = bpy.data.materials.get(material_name)
+
+        return appended_material
+    
+    else:
+        return bpy.data.materials.get(material_name)
+    
+#needed for later
+# # Iterate over cameras and set resolutions
+# for camera_name, resolution in pixel_resolutions.items():
+#     camera = bpy.data.objects.get(camera_name)
+    
+#     if camera and camera.type == 'CAMERA':
+#         bpy.context.scene.camera = camera  # Set the current scene's active camera
+#         bpy.context.scene.render.resolution_x = resolution[0]
+#         bpy.context.scene.render.resolution_y = resolution[1]
