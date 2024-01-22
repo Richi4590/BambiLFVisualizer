@@ -107,7 +107,7 @@ def create_singular_giant_plane(source_obj, full_image_path, full_mask_path):
         new_obj.data.update()
         return new_obj
 
-def create_singular_giant_projection_plane(source_obj):
+def create_giant_projection_plane(source_obj):
     # Check if the source object exists
     if source_obj:
         # Duplicate the source object

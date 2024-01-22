@@ -25,6 +25,7 @@ class LoadLFRDataOperator(bpy.types.Operator):
     bl_label = "Load LFR Data"
 
     def execute(self, context):
+
         if post_frame_change_handler in bpy.app.handlers.frame_change_post:
             bpy.app.handlers.frame_change_post.remove(post_frame_change_handler)
 
@@ -33,8 +34,21 @@ class LoadLFRDataOperator(bpy.types.Operator):
         purge_all_addon_property_data(context)
 
         lfr_prp = context.scene.lfr_properties
+        lfr_prp.view_range_of_images = False
+
+        absolute_data_path_root = os.path.abspath(os.path.join(lfr_prp.main_imgs_path, "..")).replace("\\", "/")
+        absolute_data_path_dem_folder = absolute_data_path_root + "/Data/dem"
+        absolute_data_path_dem_file = find_first_file(absolute_data_path_dem_folder, ".glb")
+        absolute_data_path_mask = find_file_by_partial_name(lfr_prp.main_imgs_path, "mask")
+
+        lfr_prp.cameras_path = lfr_prp.main_imgs_path
+        lfr_prp.dem_path = absolute_data_path_dem_file
+        lfr_prp.img_mask = absolute_data_path_mask
+
         lfr_prp.dem_mesh_obj = dem.import_dem(lfr_prp.dem_path, rotation=(0, 0, 0)) #euler rotation
-        lfr_prp.img_mask = "E:/u_Semester_Project/Data/Parkplatz_1ms/Frames_T/mask_T.png"
+
+        lfr_prp.render_path = get_absolute_file_path_from_relative_path("Pics\\") #with one \ its unterminated string
+        set_render_path("Pics\Render Result.png")
 
         cameras_collection = lfr_prp.cameras
         cameras_collection.clear()
@@ -75,19 +89,10 @@ class LoadLFRDataOperator(bpy.types.Operator):
 
             createCurveDataAndKeyFramesOutOfCameras(lfr_prp) # rendering camera gets generated inside
 
-
-
             #print(lfr_props.cam_obj.name) #debug
             bpy.app.handlers.frame_change_post.append(post_frame_change_handler) 
-            lfr_prp.pinhole_view = lfr_prp.pinhole_view # generation of plane is done in properties.py
 
             bpy.context.scene.frame_set(1)
-
-            # test------
-            # cameras_path = lfr_props.cameras_path
-            # full_img_path = cameras_path + cameras_collection[5].image_file
-            # tempcam = createAndPrepareANewCamera(lfr_props, full_img_path, lfr_props.img_mask, 1) # test
-            # tempcam.location = lfr_props.cam_obj.location
 
             #print(cameras_collection[0].quaternion[0], cameras_collection[0].quaternion[1], cameras_collection[0].quaternion[2]) #debug
 
@@ -104,16 +109,20 @@ class RenderRangeOfImagesOperator(bpy.types.Operator):
         lfr_prp = context.scene.lfr_properties
         current_frame_number = context.scene.frame_current-1
 
+        lfr_prp.view_range_of_images = False
+
         #----
         if post_frame_change_handler in bpy.app.handlers.frame_change_post:
             bpy.app.handlers.frame_change_post.remove(post_frame_change_handler)
 
-        img_tex = applyImagesAndPositionsToPlanesFromRange3(lfr_prp, current_frame_number)
-        
+        applyImagesAndPositionsToPlanesFromRange(lfr_prp, current_frame_number)
+        offset_proj_cameras_with_focus(lfr_prp, current_frame_number) #reposition cameras depending on focus
+        result_image = combine_images(lfr_prp)
         bpy.app.handlers.frame_change_post.append(post_frame_change_handler) 
         #----
-
-        update_projection_material_tex(lfr_prp.projection_mesh_obj.data.materials[0], img_tex)
+        save_image_to_disk(lfr_prp.render_path, "combined_range_image.png", result_image, True)
+        delete_temp_objects_of_range_rendering(lfr_prp)
+        
         return {'FINISHED'}
 #---------------------------------
 
@@ -128,17 +137,17 @@ class LFRPanel(bpy.types.Panel):
         layout = self.layout
         row = layout.row()
         addon_props = context.scene.lfr_properties
-        layout.prop(addon_props, "folder_path", text="Set Data Path")
-        layout.prop(addon_props, "dem_path", text="Set DEM Path") # Debug
-        layout.prop(addon_props, "cameras_path", text="Set Cameras Path") # Debug
+        layout.prop(addon_props, "main_imgs_path", text="Set Folder Path") 
+        #layout.prop(addon_props, "dem_path", text="Set DEM Path") # Debug
+        #layout.prop(addon_props, "cameras_path", text="Set Cameras Path") # Debug
         layout.prop(addon_props, "every_nth_frame", text="Use every n frame")
         row = layout.row()
         row.operator("wm.load_data", text="Load LFR Data")
         layout.prop(addon_props, "range_to_interpolate", text="Amount of frames to interpolate")
         layout.prop(addon_props, "focus", text="Focus")
         row = layout.row()
+        layout.prop(addon_props, "view_range_of_images", text="View range of images?")
         row.operator("wm.render_image_range", text="Render Range of Images")
-        layout.prop(addon_props, "pinhole_view", text="View as pinhole?")
 
 
 class SubPanelA(bpy.types.Panel):
@@ -158,8 +167,9 @@ class SubPanelA(bpy.types.Panel):
             
 def register():
     addon_utils.enable('io_import_images_as_planes', default_set=True, persistent=True, handle_error=None)
-    bpy.utils.register_class(PlanePropertyGroup)
+    bpy.utils.register_class(RangeMeshPropertyGroup)
     bpy.utils.register_class(CameraDataPropertyGroup)
+    bpy.utils.register_class(ImagePropertyGroup)
     bpy.utils.register_class(LFRProperties)
     bpy.types.Scene.lfr_properties = bpy.props.PointerProperty(type=LFRProperties)
     bpy.utils.register_class(LoadLFRDataOperator)
@@ -170,8 +180,9 @@ def register():
 
 def unregister():
     addon_utils.disable('io_import_images_as_planes', default_set=False, handle_error=None)
-    bpy.utils.unregister_class(PlanePropertyGroup)
+    bpy.utils.unregister_class(RangeMeshPropertyGroup)
     bpy.utils.unregister_class(CameraDataPropertyGroup)
+    bpy.utils.unregister_class(ImagePropertyGroup)
     bpy.utils.unregister_class(LFRProperties)
     del bpy.types.Scene.lfr_properties
     bpy.utils.unregister_class(LoadLFRDataOperator)

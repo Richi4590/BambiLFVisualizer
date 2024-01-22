@@ -10,8 +10,20 @@ from . lightfields import *
 D = bpy.data
 C = bpy.context
 
-class PlanePropertyGroup(bpy.types.PropertyGroup):
-    plane: bpy.props.PointerProperty(type=bpy.types.Object)
+class ImagePropertyGroup(bpy.types.PropertyGroup):
+    image: bpy.props.PointerProperty(type=bpy.types.Object)
+
+class RangeMeshPropertyGroup(bpy.types.PropertyGroup):
+    mesh: bpy.props.PointerProperty(type=bpy.types.Object)
+    proj_cam: bpy.props.PointerProperty(type=bpy.types.Object)
+    view_dir_obj: bpy.props.PointerProperty(type=bpy.types.Object)
+    view_origin_obj: bpy.props.PointerProperty(type=bpy.types.Object)
+    original_location: bpy.props.FloatVectorProperty(
+        name="Original Location",
+        default=(0.0, 0.0, 0.0),
+        subtype='TRANSLATION',
+        size=3,  # Size of the vector (3 for XYZ)
+    )
 
 class CameraDataPropertyGroup(bpy.types.PropertyGroup):
     fovy: bpy.props.FloatProperty(name="Field of View")
@@ -38,72 +50,59 @@ class CameraDataPropertyGroup(bpy.types.PropertyGroup):
         default="",
     )
 
-def onPinholeValueChange(self, context):
+def onViewRangeOfImagesValueChange(self, context):
     lfr_prp = context.scene.lfr_properties
-    isPinholeView = lfr_prp.pinhole_view
+    view_range_of_images = lfr_prp.view_range_of_images
+    current_frame_number = context.scene.frame_current
 
-    current_frame_number = context.scene.frame_current-1
-    full_img_path = lfr_prp.cameras_path + lfr_prp.cameras[current_frame_number].image_file
-    mask_img_path = "E:/u_Semester_Project/Data/Parkplatz_1ms/Frames_T/mask_T.png"
-
-    if isPinholeView: # works well
-        # delete all projection cameras from its collection if it exists and delete collection too
-        lfr_prp.pinhole_frame_obj = createImgWithShaderAndModifier(lfr_prp.cam_obj, lfr_prp.cameras_path, lfr_prp.cameras[0].image_file, lfr_prp.dem_mesh_obj.name) #create a plane once
-        create_overlay_material(lfr_prp.pinhole_frame_obj, full_img_path, mask_img_path)
-
-        if (lfr_prp.projection_mesh_obj):
-            lfr_prp.projection_mesh_obj.hide_viewport = True  
+    if view_range_of_images: 
+        applyImagesAndPositionsToPlanesFromRange(lfr_prp, current_frame_number)
     else:
-        if (lfr_prp.pinhole_frame_obj is not None):
-            bpy.data.objects.remove(lfr_prp.pinhole_frame_obj, do_unlink=True) 
-
-        if (lfr_prp.projection_mesh_obj is None):
-            create_singular_giant_projection_plane(lfr_prp.dem_mesh_obj)
-
-
-        img_tex = get_image_epending_on_frame(lfr_prp, current_frame_number)
-        update_projection_material_tex(lfr_prp.projection_mesh_obj.data.materials[0], img_tex)
-        lfr_prp.projection_mesh_obj.hide_viewport = False
-        # create all projection cameras (inside its own collection)
-
-    bpy.context.scene.frame_set(context.scene.frame_current)
-    bpy.data.objects[lfr_prp.cam_obj.name].select_set(True) # have camera selected after loading
+        delete_temp_objects_of_range_rendering(lfr_prp)
+        delete_rendered_images_data(lfr_prp)
+        bpy.ops.outliner.orphans_purge(do_local_ids=True, do_linked_ids=True, do_recursive=True) #slight memory clean up
 
 def initStartupObjects(self, context):
     lfr_prp = context.scene.lfr_properties
-    isPinholeView = lfr_prp.pinhole_view
 
-    if isPinholeView: # works well
-        createMainCamera(lfr_prp) # only gets created once
-    else:
-        lfr_prp.projection_mesh_obj = create_singular_giant_projection_plane(lfr_prp.dem_mesh_obj)
-        createMainCamera(lfr_prp) # only gets created once
+    lfr_prp.projection_mesh_obj = create_giant_projection_plane(lfr_prp.dem_mesh_obj)
+    createMainCamera(lfr_prp) # only gets created once
+
+    if (lfr_prp.projection_mesh_obj is None):
+        lfr_prp.projection_mesh_obj = create_giant_projection_plane(lfr_prp.dem_mesh_obj)
 
     bpy.context.scene.frame_set(context.scene.frame_current)
     bpy.data.objects[lfr_prp.cam_obj.name].select_set(True) # have camera selected after loading
 
-def onAnyValueChange(self, context):
+def onFocusValueChange(self, context):
+    current_frame_number = context.scene.frame_current
     lfr_prp = context.scene.lfr_properties
-    bpy.context.scene.frame_set(context.scene.frame_current)
-    bpy.data.objects[lfr_prp.cam_obj.name].select_set(True) # have camera selected after loading
+    
+    offset_proj_cameras_with_focus(lfr_prp, current_frame_number)
+
+def offset_proj_cameras_with_focus(lfr_prp, current_frame_number):
+    projection_objects = lfr_prp.range_objects
+
+    #main camera
+    orig_main_cam_location = lfr_prp.cameras[current_frame_number].location
+    new_location = (orig_main_cam_location[0], orig_main_cam_location[1] + lfr_prp.focus, orig_main_cam_location[2])
+    lfr_prp.cam_obj.location = new_location
+
+    for entry in projection_objects:
+        new_location = (entry.original_location.x, entry.original_location.y + lfr_prp.focus, entry.original_location.z)
+        entry.proj_cam.location = new_location
 
 def post_frame_change_handler(scene): #executes after a new keyframe loaded
     current_frame_number = scene.frame_current
     lfr_prp = scene.lfr_properties
 
     if current_frame_number >= 1 and current_frame_number < len(lfr_prp.cameras):
-        if lfr_prp.pinhole_view:
-            lfr_prp.pinhole_frame_obj.location = lfr_prp.cam_obj.location
-            full_img_path = lfr_prp.cameras_path + lfr_prp.cameras[current_frame_number].image_file 
-            update_overlay_material_path(lfr_prp.pinhole_frame_obj, full_img_path)  
-            #createNewUV(lfr_prp.dem_mesh_obj) 
+        if lfr_prp.projection_mesh_obj:
+            #img_tex = applyImagesAndPositionsToPlanesFromRange(lfr_prp, current_frame_number)
+            img_tex = get_image_depending_on_frame(lfr_prp, current_frame_number)
+            update_projection_material_tex(lfr_prp.projection_mesh_obj.data.materials[0], img_tex)
         else:
-            if (lfr_prp.projection_mesh_obj):
-                img_tex = applyImagesAndPositionsToPlanesFromRange(lfr_prp, current_frame_number)
-                #img_tex = get_image_epending_on_frame(lfr_prp, current_frame_number)
-                update_projection_material_tex(lfr_prp.projection_mesh_obj.data.materials[0], img_tex)
-            else:
-                create_singular_giant_projection_plane(lfr_prp.dem_mesh_obj)
+            lfr_prp.projection_mesh_obj = create_giant_projection_plane(lfr_prp.dem_mesh_obj)
             
 
 class LFRProperties(bpy.types.PropertyGroup):
@@ -112,11 +111,14 @@ class LFRProperties(bpy.types.PropertyGroup):
     cam_obj: bpy.props.PointerProperty(type=bpy.types.Object)
     pinhole_frame_obj: bpy.props.PointerProperty(type=bpy.types.Object) 
     projection_mesh_obj: bpy.props.PointerProperty(type=bpy.types.Object) 
-
-    pinhole_view: bpy.props.BoolProperty(
-        default=True,
-        update=onPinholeValueChange) #triggered when toggling pinhole
+    range_objects: bpy.props.CollectionProperty(type=RangeMeshPropertyGroup)
+    range_render_cam: bpy.props.PointerProperty(type=bpy.types.Object)
+    rendered_images: bpy.props.CollectionProperty(type=ImagePropertyGroup)
     
+    view_range_of_images: bpy.props.BoolProperty(
+        default=True,
+        update=onViewRangeOfImagesValueChange) 
+
     img_mask: bpy.props.StringProperty(
         name="Masking Image"
     )
@@ -132,7 +134,7 @@ class LFRProperties(bpy.types.PropertyGroup):
     range_to_interpolate: bpy.props.IntProperty(
         default=1,
         min=1,
-        max=100
+        max=200
     )
 
     #focus value for the interpolation
@@ -140,24 +142,27 @@ class LFRProperties(bpy.types.PropertyGroup):
         default=0.0,
         min=-100.0,
         max=100.0,
-        update=onAnyValueChange #triggered when changing focus
+        update=onFocusValueChange #triggered when changing focus
     )  
-
-    folder_path: bpy.props.StringProperty(
-        name="Folder Path",
-        subtype='DIR_PATH',
-        default="",
-    )
 
     #debug default should be empty for all
     dem_path: bpy.props.StringProperty(
         name="DEM Path",
-        subtype='FILE_PATH',
-        default="E:/u_Semester_Project/Data/Parkplatz_1ms/Data/dem/dem_mesh_r2.glb", 
+        subtype='FILE_PATH'
     )
 
     cameras_path: bpy.props.StringProperty(
         name="CAMERAS Path",
+        subtype='FILE_PATH'
+    )
+
+    main_imgs_path: bpy.props.StringProperty(
+        name="FOLDER Path",
+        subtype='DIR_PATH',
+        default="", 
+    )
+
+    render_path: bpy.props.StringProperty(
+        name="Fixed Render Path",
         subtype='FILE_PATH',
-        default="E:/u_Semester_Project/Data/Parkplatz_1ms/Frames_T/", 
     )

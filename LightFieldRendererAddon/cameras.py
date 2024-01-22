@@ -4,9 +4,22 @@ from math import radians
 import bpy
 from mathutils import *
 
+from . plane import create_giant_projection_plane
+
 from . util import *
-D = bpy.data
-C = bpy.context
+
+try:
+    from dateutil import parser
+except ImportError:
+    print("python-dateutil is not installed. Installing...")
+    try:
+        import pip
+        pip.main(["install", "python-dateutil"])
+        from dateutil import parser
+        print("python-dateutil has been successfully installed.")
+    except ImportError:
+        print("Failed to install python-dateutil. Please install it manually.")
+        raise
 
 def parse_poses(posesUrl, nth_frame):
 
@@ -31,6 +44,9 @@ def parse_poses(posesUrl, nth_frame):
     for pose in frames:
         if i % nth_frame == 0:
             quat = Quaternion()
+
+            if "rotation" not in pose or "location" not in pose or "imagefile" not in pose:
+                continue
 
             if len(pose["rotation"]) == 4:
                 # Assume we have a quaternion
@@ -57,6 +73,13 @@ def parse_poses(posesUrl, nth_frame):
                 print(f"Pose {i} has no numeric 'fovy' property!")
                 raise ValueError(f"Pose {i} has no numeric 'fovy' property!")
 
+            # Remove the colon from the timezone offset
+            parsed_date = parser.parse(pose["timestamp"])
+
+            # Define the format string without %z
+            format_string = '%Y-%m-%dT%H:%M:%S.%f'
+
+
             camera = {
                 "fovy": pose["fovy"],
                 "aspect": 1.0,
@@ -65,7 +88,7 @@ def parse_poses(posesUrl, nth_frame):
                 "position": pose["location"],
                 "quaternion": quat,
                 "image_file": pose["imagefile"],
-                "timestamp": datetime.strptime(pose["timestamp"], "%Y-%m-%dT%H:%M:%S.%f%z")
+                "timestamp": parsed_date
             }
 
             cameras.append(camera)
@@ -113,7 +136,18 @@ def createCurveDataAndKeyFramesOutOfCameras(lfr_props):
     
 def createAndPrepareANewCamera(lfr_props, full_image_path, full_mask_path, camera_number):
     append_content_from_blend_file('./Assets/projection_material.blend', 'Collection', 'ProjectionGroup') # import the camera group from the blend file
-    projection_plane = lfr_props.projection_mesh_obj
+
+    projection_plane = None
+    range_obj_set = None
+
+
+    if camera_number == 0:
+        projection_plane = lfr_props.projection_mesh_obj
+    else:
+        range_obj_set = lfr_props.range_objects.add()
+        range_obj_set.mesh = create_giant_projection_plane(lfr_props.dem_mesh_obj)
+        range_obj_set.mesh.location = (range_obj_set.mesh.location.x, range_obj_set.mesh.location.y - (0.01 * camera_number), range_obj_set.mesh.location.z)
+
     view_origin_obj = None
     view_direction_obj = None
 
@@ -125,17 +159,30 @@ def createAndPrepareANewCamera(lfr_props, full_image_path, full_mask_path, camer
     sub_scene_collection = bpy.data.collections.get('ProjectionGroup') #only one camera at a time should exist with this name
     sub_scene_collection.name = "ProjectionGroup_" + camera_number_str
 
+
     camera_obj = None
     for obj in sub_scene_collection.objects:
         if (obj.type == 'CAMERA'):
             camera_obj = obj
             camera_obj.name = 'Camera_' + camera_number_str
+            if range_obj_set:
+                range_obj_set.proj_cam = camera_obj
+                range_obj_set.proj_cam.location = lfr_props.cameras[camera_number].location
+                range_obj_set.original_location = camera_obj.location
+                range_obj_set.proj_cam.rotation_mode = 'QUATERNION'
+                range_obj_set.proj_cam.rotation_quaternion = lfr_props.cameras[camera_number].quaternion
+                range_obj_set.proj_cam.data.lens = lfr_props.cameras[camera_number].fovy  # Set the focal length (not FOV)
+            
         if ('ViewDirection' in obj.name):
             obj.name = 'ViewDirection_' + camera_number_str
             view_direction_obj = obj
+            if range_obj_set:
+                range_obj_set.view_dir_obj = view_direction_obj
         if ('ViewOrigin' in obj.name):
             obj.name = 'ViewOrigin_' + camera_number_str
             view_origin_obj = obj
+            if range_obj_set:
+                range_obj_set.view_origin_obj = view_origin_obj
 
     bpy.ops.object.select_all(action='DESELECT')
     bpy.context.view_layer.objects.active = camera_obj
@@ -144,16 +191,21 @@ def createAndPrepareANewCamera(lfr_props, full_image_path, full_mask_path, camer
     link_obj(bpy.context.scene.collection, camera_obj)    
     #camera_obj.name = 'camera_' + loaded_img.name 
 
-    if (lfr_props.pinhole_view is False):
+    if (True):
         # Create a new material and refresh shader attributes
         # each new material corresponds to a specific camera
-        if (len(projection_plane.data.materials) >= 2): # -------------- really important, 1x assigned material means len of 1!
-            new_material = projection_plane.data.materials[0].copy()
-        else:
-            new_material = get_material_from_blend_file('Assets\projection_material.blend', 'ProjectionMaterial')
+        # if (len(projection_plane.data.materials) >= 2): # -------------- really important, 1x assigned material means len of 1!
+        #     new_material = projection_plane.data.materials[0].copy()
+        # else:
+        new_material = get_material_from_blend_file('Assets\projection_material.blend', 'ProjectionMaterial')
 
-        projection_plane.data.materials.append(new_material)
-        projection_plane.active_material_index = len(projection_plane.material_slots) - 1
+        if projection_plane:
+            projection_plane.data.materials.append(new_material)
+            projection_plane.active_material_index = len(projection_plane.material_slots) - 1
+        else:
+            range_obj_set.mesh.data.materials.append(new_material)
+            range_obj_set.mesh.active_material_index = len(range_obj_set.mesh.material_slots) - 1
+        
         new_material.name = camera_number_str
 
         #if (len(projection_plane.data.materials) >= 2):          
@@ -259,3 +311,18 @@ def createMainCamera(lfr_props):
     camera_obj.name = 'MainCamera'
     bpy.context.scene.camera = camera_obj # Set the active camera in the scene
     lfr_props.cam_obj = camera_obj
+
+def createRangeRenderCamera(position, ref_cam_euler_rotation):
+    bpy.ops.object.select_all(action='DESELECT')
+
+    # Create a new camera
+    bpy.ops.object.camera_add(location=position)
+    new_camera = bpy.context.object
+    new_camera.name = "Range_Render_Camera"
+
+    # Set the new camera's rotation to match the reference camera
+    rotation_matrix = ref_cam_euler_rotation.to_matrix()
+    new_camera.rotation_euler = rotation_matrix.to_euler()
+
+    return new_camera
+
