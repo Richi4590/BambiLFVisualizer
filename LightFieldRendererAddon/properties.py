@@ -2,8 +2,7 @@ import math
 import bpy
 from mathutils import *
 
-from . cameras import createMainCamera
-from .lightfields import createImgWithShaderAndModifierPos
+from . cameras import create_main_camera, set_current_camera_rendering_resolution
 from . util import *
 from . lightfields import *
 
@@ -50,23 +49,25 @@ class CameraDataPropertyGroup(bpy.types.PropertyGroup):
         default="",
     )
 
-def onViewRangeOfImagesValueChange(self, context):
+def on_view_range_of_images_value_change(self, context):
     lfr_prp = context.scene.lfr_properties
     view_range_of_images = lfr_prp.view_range_of_images
     current_frame_number = context.scene.frame_current
 
     if view_range_of_images: 
-        applyImagesAndPositionsToPlanesFromRange(lfr_prp, current_frame_number)
+        apply_images_and_positions_to_planes_from_range(lfr_prp, current_frame_number)
     else:
         delete_temp_objects_of_range_rendering(lfr_prp)
         delete_rendered_images_data(lfr_prp)
         bpy.ops.outliner.orphans_purge(do_local_ids=True, do_linked_ids=True, do_recursive=True) #slight memory clean up
 
-def initStartupObjects(self, context):
+def init_startup_objs(self, context):
     lfr_prp = context.scene.lfr_properties
 
     lfr_prp.projection_mesh_obj = create_giant_projection_plane(lfr_prp.dem_mesh_obj)
-    createMainCamera(lfr_prp) # only gets created once
+    create_main_camera(lfr_prp) # only gets created once
+
+    set_current_camera_rendering_resolution(lfr_prp)
 
     if (lfr_prp.projection_mesh_obj is None):
         lfr_prp.projection_mesh_obj = create_giant_projection_plane(lfr_prp.dem_mesh_obj)
@@ -74,10 +75,9 @@ def initStartupObjects(self, context):
     bpy.context.scene.frame_set(context.scene.frame_current)
     bpy.data.objects[lfr_prp.cam_obj.name].select_set(True) # have camera selected after loading
 
-def onFocusValueChange(self, context):
+def on_focus_value_change(self, context):
     current_frame_number = context.scene.frame_current
     lfr_prp = context.scene.lfr_properties
-    
     offset_proj_cameras_with_focus(lfr_prp, current_frame_number)
 
 def offset_proj_cameras_with_focus(lfr_prp, current_frame_number):
@@ -97,13 +97,16 @@ def post_frame_change_handler(scene): #executes after a new keyframe loaded
     lfr_prp = scene.lfr_properties
 
     if current_frame_number >= 1 and current_frame_number < len(lfr_prp.cameras):
+        
+        if (lfr_prp.cam_obj):
+            bpy.ops.object.transform_apply(location=True)
+
         if lfr_prp.projection_mesh_obj:
             #img_tex = applyImagesAndPositionsToPlanesFromRange(lfr_prp, current_frame_number)
             img_tex = get_image_depending_on_frame(lfr_prp, current_frame_number)
             update_projection_material_tex(lfr_prp.projection_mesh_obj.data.materials[0], img_tex)
         else:
             lfr_prp.projection_mesh_obj = create_giant_projection_plane(lfr_prp.dem_mesh_obj)
-            
 
 class LFRProperties(bpy.types.PropertyGroup):
     cameras: bpy.props.CollectionProperty(type=CameraDataPropertyGroup)
@@ -117,7 +120,8 @@ class LFRProperties(bpy.types.PropertyGroup):
     
     view_range_of_images: bpy.props.BoolProperty(
         default=True,
-        update=onViewRangeOfImagesValueChange) 
+        update=on_view_range_of_images_value_change
+    ) 
 
     img_mask: bpy.props.StringProperty(
         name="Masking Image"
@@ -125,7 +129,7 @@ class LFRProperties(bpy.types.PropertyGroup):
 
     # amount of frames to be used to "interpolate"
     every_nth_frame: bpy.props.IntProperty(
-        default=1,
+        default=5,
         min=1,
         max=100
     )
@@ -140,29 +144,72 @@ class LFRProperties(bpy.types.PropertyGroup):
     #focus value for the interpolation
     focus: bpy.props.FloatProperty(
         default=0.0,
-        min=-100.0,
-        max=100.0,
-        update=onFocusValueChange #triggered when changing focus
+        update=on_focus_value_change #triggered when changing focus
     )  
 
-    #debug default should be empty for all
+    folder_path: bpy.props.StringProperty(
+        name="Fold path",
+        subtype="DIR_PATH"
+    )
+
+    #the following paths will be applied automatically 
+    #or overwritten by the manually specified paths 
     dem_path: bpy.props.StringProperty(
         name="DEM Path",
-        subtype='FILE_PATH'
+        subtype="FILE_PATH"
     )
 
     cameras_path: bpy.props.StringProperty(
         name="CAMERAS Path",
-        subtype='FILE_PATH'
-    )
-
-    main_imgs_path: bpy.props.StringProperty(
-        name="FOLDER Path",
-        subtype='DIR_PATH',
-        default="", 
+        subtype="FILE_PATH"
     )
 
     render_path: bpy.props.StringProperty(
-        name="Fixed Render Path",
-        subtype='FILE_PATH',
+        name="Default Render Path",
+        subtype="DIR_PATH"
+    )
+
+    json_path: bpy.props.StringProperty(
+        name="Default JSON Path",
+        subtype="FILE_PATH"
+    )
+
+    #properties in the addon options panel
+    man_rend_cam: bpy.props.PointerProperty(
+        type=bpy.types.Object,
+        name="Manual Rendering Camera",
+        description="Select the camera you want to use for the rendering"
+    )
+
+    save_rend_images: bpy.props.BoolProperty(
+        default=False
+    ) 
+
+    rend_res_x: bpy.props.IntProperty(
+        name="Pixel Width",
+        description="Enter the pixel width",
+        default=1024,
+        min=1
+    )
+
+    rend_res_y: bpy.props.IntProperty(
+        name="Pixel Height",
+        description="Enter the pixel height",
+        default=1024,
+        min=1
+    )
+
+    man_render_path: bpy.props.StringProperty(
+        name="Default Render Path",
+        subtype="DIR_PATH"
+    )
+
+    man_dem_path: bpy.props.StringProperty(
+        name="Default Render Path",
+        subtype="FILE_PATH"
+    )
+
+    man_json_path: bpy.props.StringProperty(
+        name="Default Render Path",
+        subtype="FILE_PATH"
     )

@@ -1,43 +1,10 @@
 import math
+import time
 import bpy
 from mathutils import *
 from . util import *
 D = bpy.data
 C = bpy.context
-
-def create_parent(name):
-    # Create an empty object to serve as the parent
-    parent_obj = bpy.data.objects.new(name, None)
-    bpy.context.scene.collection.objects.link(parent_obj)
-    bpy.context.view_layer.objects.active = parent_obj
-    bpy.ops.object.select_all(action='DESELECT')
-    parent_obj.select_set(True)
-
-    return parent_obj
-
-def add_child(parent, child):
-    # Parent the child to the parent
-    child.select_set(True)
-    bpy.context.view_layer.objects.active = parent
-    bpy.ops.object.parent_set(type='OBJECT')
-
-def remove_children(parent):
-    bpy.ops.object.mode_set(mode='OBJECT')
-    # Remove all children of the parent
-    children = [child for child in bpy.data.objects if child.parent == parent]
-    bpy.ops.object.select_all(action='DESELECT')
-    bpy.context.view_layer.objects.active = parent
-    parent.select_set(True)
-
-    # Select children manually
-    for child in children:
-        child.select_set(True)
-
-    bpy.ops.object.parent_clear(type='CLEAR_KEEP_TRANSFORM')
-
-    # Delete the children
-    for child in children:
-        bpy.data.objects.remove(child, do_unlink=True)
 
 def create_singular_giant_plane(source_obj, full_image_path, full_mask_path):
     # Check if the source object exists
@@ -120,7 +87,7 @@ def create_giant_projection_plane(source_obj):
         new_obj.select_set(True)    
         bpy.context.view_layer.objects.active = new_obj
         
-        offset_vector = Vector((0.0, -0.5, 0.0))
+        offset_vector = Vector((0.0, -0.1, 0.0))
         new_obj.location += offset_vector
 
         ##### remove materials
@@ -238,9 +205,17 @@ def update_projection_material_tex(material, img_texture):
             if node.label == 'MainTexture': #label is the in the UI renamed name. Not the .name attribute!
                     base_color_texture_node = node
     
-    if (base_color_texture_node.image):
-        if base_color_texture_node.image != img_texture:
-            bpy.data.images.remove(base_color_texture_node.image, do_unlink=True)
-            base_color_texture_node.image = None
-                
+    # Get the previous image, if any
+    prev_image = base_color_texture_node.image
+
+    # Assign the new image
     base_color_texture_node.image = img_texture
+    base_color_texture_node.image.reload()
+
+    print(img_texture.name)
+ 
+    # Cleanup previous image to release resources
+    if prev_image:
+        bpy.data.images.remove(prev_image, do_unlink=True)
+
+    print("arrived here")

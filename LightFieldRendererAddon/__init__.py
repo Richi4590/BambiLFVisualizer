@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Light Field Renderer",
     "author": "Serban Richardo & Schmalzer Lukas",
-    "version": (0, 1),
+    "version": (0, 9),
     "blender": (4, 0, 0),
     "location": "View3D > Toolbar > LFR",
     "description": "Load, view, render and adjust light field rendering of a dataset",
@@ -12,7 +12,6 @@ bl_info = {
 
 import addon_utils
 import bpy
-
 from . lightfields import *
 from . dem import *
 from . util import *
@@ -36,31 +35,21 @@ class LoadLFRDataOperator(bpy.types.Operator):
         lfr_prp = context.scene.lfr_properties
         lfr_prp.view_range_of_images = False
 
-        absolute_data_path_root = os.path.abspath(os.path.join(lfr_prp.main_imgs_path, "..")).replace("\\", "/")
-        absolute_data_path_dem_folder = absolute_data_path_root + "/Data/dem"
-        absolute_data_path_dem_file = find_first_file(absolute_data_path_dem_folder, ".glb")
-        absolute_data_path_mask = find_file_by_partial_name(lfr_prp.main_imgs_path, "mask")
-
-        lfr_prp.cameras_path = lfr_prp.main_imgs_path
-        lfr_prp.dem_path = absolute_data_path_dem_file
-        lfr_prp.img_mask = absolute_data_path_mask
+        correctly_set_or_overwrite_path_strings(lfr_prp)
 
         lfr_prp.dem_mesh_obj = dem.import_dem(lfr_prp.dem_path, rotation=(0, 0, 0)) #euler rotation
-
-        lfr_prp.render_path = get_absolute_file_path_from_relative_path("Pics\\") #with one \ its unterminated string
-        set_render_path("Pics\Render Result.png")
 
         cameras_collection = lfr_prp.cameras
         cameras_collection.clear()
 
         # Add a new camera data item to the collection
-        camerasData = parse_poses(lfr_prp.cameras_path, lfr_prp.every_nth_frame)
+        cameras_data = parse_poses(lfr_prp.json_path, lfr_prp.every_nth_frame)
 
         #print(camerasData[0]["fovy"]) #debug
 
         #takes the camera dataset and loads it into the lfr_properties.cameras (cameras_collection)
-        if (camerasData is not None):
-            for camData in camerasData:
+        if (cameras_data is not None):
+            for camData in cameras_data:
                 camQuaternion = [camData["quaternion"].x, camData["quaternion"].y, camData["quaternion"].z, camData["quaternion"].w]
                 camTimeStamp = camData["timestamp"].isoformat()
                 pos = camData["position"]
@@ -84,17 +73,10 @@ class LoadLFRDataOperator(bpy.types.Operator):
             if (context.scene.frame_current > len(cameras_collection)-1): 
                 bpy.context.scene.frame_set(1)
 
-            #print(lfr_props.cameras) #debug
-            initStartupObjects(self, context) # generates main camera and potentially a projection plane
-
-            createCurveDataAndKeyFramesOutOfCameras(lfr_prp) # rendering camera gets generated inside
-
-            #print(lfr_props.cam_obj.name) #debug
+            init_startup_objs(self, context) # generates main camera and potentially a projection plane
+            create_curve_data_and_key_frames(lfr_prp) # rendering camera gets generated inside
             bpy.app.handlers.frame_change_post.append(post_frame_change_handler) 
-
             bpy.context.scene.frame_set(1)
-
-            #print(cameras_collection[0].quaternion[0], cameras_collection[0].quaternion[1], cameras_collection[0].quaternion[2]) #debug
 
             bpy.ops.object.mode_set(mode="OBJECT")    
             bpy.ops.object.select_all(action='DESELECT') # deselect everything
@@ -115,7 +97,7 @@ class RenderRangeOfImagesOperator(bpy.types.Operator):
         if post_frame_change_handler in bpy.app.handlers.frame_change_post:
             bpy.app.handlers.frame_change_post.remove(post_frame_change_handler)
 
-        applyImagesAndPositionsToPlanesFromRange(lfr_prp, current_frame_number)
+        apply_images_and_positions_to_planes_from_range(lfr_prp, current_frame_number)
         offset_proj_cameras_with_focus(lfr_prp, current_frame_number) #reposition cameras depending on focus
         result_image = combine_images(lfr_prp)
         bpy.app.handlers.frame_change_post.append(post_frame_change_handler) 
@@ -124,6 +106,47 @@ class RenderRangeOfImagesOperator(bpy.types.Operator):
         delete_temp_objects_of_range_rendering(lfr_prp)
         
         return {'FINISHED'}
+    
+class OpenRenderFolderOperator(bpy.types.Operator):
+    bl_idname = "wm.open_render_folder"
+    bl_label = "Open Render Folder"
+
+    def execute(self, context):
+
+        # removes the /Render Result.png from the path
+        render_output_folder = os.path.abspath(os.path.join(bpy.context.scene.render.filepath, "..")) 
+        render_output_folder = render_output_folder.replace("\\", "/") # replace \ to /
+
+        # Open the file explorer with the render output folder (Windows)
+        if render_output_folder:
+            os.startfile(render_output_folder)
+        
+        return {'FINISHED'}
+    
+class ClearRenderFolderOperator(bpy.types.Operator):
+    bl_idname = "wm.clear_render_folder"
+    bl_label = "Clear Render Folder"
+
+    def execute(self, context):
+
+        # removes the /Render Result.png from the path
+        render_output_folder = os.path.abspath(os.path.join(bpy.context.scene.render.filepath, "..")) 
+        render_output_folder = render_output_folder.replace("\\", "/") # replace \ to /
+
+        # Clear the contents of the folder
+        if os.path.exists(render_output_folder) and os.path.isdir(render_output_folder):
+            for filename in os.listdir(render_output_folder):
+                file_path = os.path.join(render_output_folder, filename)
+                try:
+                    if os.path.isfile(file_path):
+                        os.remove(file_path)
+                except Exception as e:
+                    print(f"Error deleting {file_path}: {e}")
+        else:
+            print(f"Folder '{render_output_folder}' does not exist or is not a directory.")
+        
+        return {'FINISHED'}
+
 #---------------------------------
 
 class LFRPanel(bpy.types.Panel):
@@ -137,32 +160,43 @@ class LFRPanel(bpy.types.Panel):
         layout = self.layout
         row = layout.row()
         addon_props = context.scene.lfr_properties
-        layout.prop(addon_props, "main_imgs_path", text="Set Folder Path") 
-        #layout.prop(addon_props, "dem_path", text="Set DEM Path") # Debug
-        #layout.prop(addon_props, "cameras_path", text="Set Cameras Path") # Debug
+        layout.prop(addon_props, "folder_path", text="Set Folder Path") 
         layout.prop(addon_props, "every_nth_frame", text="Use every n frame")
         row = layout.row()
         row.operator("wm.load_data", text="Load LFR Data")
-        layout.prop(addon_props, "range_to_interpolate", text="Amount of frames to interpolate")
-        layout.prop(addon_props, "focus", text="Focus")
+        row = layout.row()
+        row.prop(addon_props, "range_to_interpolate", text="Amount of frames to interpolate")
+        row.prop(addon_props, "focus", text="Focus")
         row = layout.row()
         layout.prop(addon_props, "view_range_of_images", text="View range of images?")
         row.operator("wm.render_image_range", text="Render Range of Images")
 
 
-class SubPanelA(bpy.types.Panel):
-    bl_label = "SubPanel Test A"
-    bl_idname = "PT_Bambi_LFR_Pan_A"
+class AdditionalOptionsPanel(bpy.types.Panel):
+    bl_label = "Additional Options"
+    bl_idname = "PT_Bambi_LFR_Opt_Panel"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "Subpanel A"
+    bl_category = "Additional_Options"
     bl_parent_id = "PT_Bambi_LFR" # important in order to make a subpanel!
     bl_options = {"DEFAULT_CLOSED"}
         
     def draw(self, context):
         layout = self.layout
         row = layout.row()
-        row.label(text="This is Panel A", icon="HEART")
+        addon_props = context.scene.lfr_properties
+        layout.prop_search(addon_props, "man_rend_cam", context.scene, "objects", icon='OBJECT_DATA')
+        row = layout.row(align=True)
+        row.prop(addon_props, "rend_res_x", text="Rendering Resolution X") 
+        row.prop(addon_props, "rend_res_y", text="Rendering Resolution Y")
+        row = layout.row(align=True)
+        row.prop(addon_props, "save_rend_images", text="Save Rendered Images Individually?") 
+        row.operator("wm.open_render_folder", text="Open Render Folder")
+        row.operator("wm.clear_render_folder", text="Clear Render Folder Content")
+        row = layout.row(align=False)
+        layout.prop(addon_props, "man_render_path", text="Set Render Folder")  
+        layout.prop(addon_props, "man_dem_path", text="Set DEM File Path Manually") 
+        layout.prop(addon_props, "man_json_path", text="Set JSON File Path Manually") 
             
             
 def register():
@@ -174,8 +208,10 @@ def register():
     bpy.types.Scene.lfr_properties = bpy.props.PointerProperty(type=LFRProperties)
     bpy.utils.register_class(LoadLFRDataOperator)
     bpy.utils.register_class(RenderRangeOfImagesOperator)
+    bpy.utils.register_class(OpenRenderFolderOperator)
+    bpy.utils.register_class(ClearRenderFolderOperator)
     bpy.utils.register_class(LFRPanel)
-    bpy.utils.register_class(SubPanelA)
+    bpy.utils.register_class(AdditionalOptionsPanel)
 
 
 def unregister():
@@ -187,8 +223,10 @@ def unregister():
     del bpy.types.Scene.lfr_properties
     bpy.utils.unregister_class(LoadLFRDataOperator)
     bpy.utils.unregister_class(RenderRangeOfImagesOperator)
+    bpy.utils.unregister_class(OpenRenderFolderOperator)
+    bpy.utils.unregister_class(ClearRenderFolderOperator)
     bpy.utils.unregister_class(LFRPanel)
-    bpy.utils.unregister_class(SubPanelA)
+    bpy.utils.unregister_class(AdditionalOptionsPanel)
     if post_frame_change_handler in bpy.app.handlers.frame_change_post:
         bpy.app.handlers.frame_change_post.remove(post_frame_change_handler)
 
