@@ -105,9 +105,12 @@ def post_frame_change_handler(scene): #executes after a new keyframe loaded
             #img_tex = applyImagesAndPositionsToPlanesFromRange(lfr_prp, current_frame_number)
             img_tex = get_image_depending_on_frame(lfr_prp, current_frame_number)
             update_projection_material_tex(lfr_prp.projection_mesh_obj.data.materials[0], img_tex)
+
+            if lfr_prp.view_range_of_images:
+                move_range_of_projections_and_apply_new_images(lfr_prp, current_frame_number)
+
         else:
             lfr_prp.projection_mesh_obj = create_giant_projection_plane(lfr_prp.dem_mesh_obj)
-
 class LFRProperties(bpy.types.PropertyGroup):
     cameras: bpy.props.CollectionProperty(type=CameraDataPropertyGroup)
     dem_mesh_obj: bpy.props.PointerProperty(type=bpy.types.Object)

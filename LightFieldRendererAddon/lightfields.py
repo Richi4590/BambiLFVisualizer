@@ -34,6 +34,31 @@ def apply_images_and_positions_to_planes_from_range(lfr_prp, start_keyframe_inde
         if j >= end_index:
             break
 
+def move_range_of_projections_and_apply_new_images(lfr_props, start_keyframe_index):
+    range_objects = lfr_props.range_objects
+    frame_range = len(range_objects)
+    cameras_data_arr = lfr_props.cameras
+    cameras_path = lfr_props.cameras_path
+
+    end_index = start_keyframe_index + frame_range
+    actual_img_count = end_index
+
+    if end_index > len(cameras_data_arr):
+        actual_img_count = len(cameras_data_arr) - start_keyframe_index
+        end_index = len(cameras_data_arr)
+
+    j = 0
+    for i in range(start_keyframe_index, end_index):
+        camData = cameras_data_arr[i]
+
+        img_path = cameras_path + camData.image_file
+        frame = bpy.data.images.load(img_path)
+        range_objects[j].original_location = camData.location
+        range_objects[j].proj_cam.location = camData.location
+        update_projection_material_tex(range_objects[j].mesh.data.materials[0], frame)
+        
+        j = j + 1
+
 def get_image_depending_on_frame(lfr_prp, index): #simple sinlge image application
     cameras_data_arr = lfr_prp.cameras
     cameras_path = lfr_prp.cameras_path

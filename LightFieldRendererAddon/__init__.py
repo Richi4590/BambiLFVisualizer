@@ -10,6 +10,7 @@ bl_info = {
     "category": "",
 }
 
+import re
 import addon_utils
 import bpy
 from . lightfields import *
@@ -113,13 +114,18 @@ class OpenRenderFolderOperator(bpy.types.Operator):
 
     def execute(self, context):
 
-        # removes the /Render Result.png from the path
-        render_output_folder = os.path.abspath(os.path.join(bpy.context.scene.render.filepath, "..")) 
-        render_output_folder = render_output_folder.replace("\\", "/") # replace \ to /
+        render_output_path = bpy.context.scene.render.filepath
+        file_type_regex = r"\.[^.\\/]+$"
+
+        # Check if the path has a file at the end with regex (excludes folder paths)
+        if re.search(file_type_regex, render_output_path):
+            # removes the /Render Result.png from the path
+            render_output_path = os.path.abspath(os.path.join(bpy.context.scene.render.filepath, "..")) 
+            render_output_path = render_output_path.replace("\\", "/") # replace \ to /
 
         # Open the file explorer with the render output folder (Windows)
-        if render_output_folder:
-            os.startfile(render_output_folder)
+        if render_output_path:
+            os.startfile(render_output_path)
         
         return {'FINISHED'}
     
@@ -129,9 +135,16 @@ class ClearRenderFolderOperator(bpy.types.Operator):
 
     def execute(self, context):
 
+        render_output_folder = bpy.context.scene.render.filepath
+        allowed_extensions = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.mp4', '.avi', '.mkv']
+
+        file_type_regex = r"\.[^.\\/]+$"
+
+        # Check if the path has a file at the end with regex (excludes folder paths)
+        if re.search(file_type_regex, render_output_folder):
         # removes the /Render Result.png from the path
-        render_output_folder = os.path.abspath(os.path.join(bpy.context.scene.render.filepath, "..")) 
-        render_output_folder = render_output_folder.replace("\\", "/") # replace \ to /
+            render_output_folder = os.path.abspath(os.path.join(bpy.context.scene.render.filepath, "..")) 
+            render_output_folder = render_output_folder.replace("\\", "/") # replace \ to /
 
         # Clear the contents of the folder
         if os.path.exists(render_output_folder) and os.path.isdir(render_output_folder):
@@ -139,7 +152,10 @@ class ClearRenderFolderOperator(bpy.types.Operator):
                 file_path = os.path.join(render_output_folder, filename)
                 try:
                     if os.path.isfile(file_path):
-                        os.remove(file_path)
+                         # Check if the file has an allowed extension
+                        _, file_extension = os.path.splitext(filename)
+                        if file_extension.lower() in allowed_extensions:
+                            os.remove(file_path)
                 except Exception as e:
                     print(f"Error deleting {file_path}: {e}")
         else:

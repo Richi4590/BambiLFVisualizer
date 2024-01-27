@@ -193,10 +193,8 @@ def correctly_set_or_overwrite_path_strings(lfr_prp):
     lfr_prp.folder_path = lfr_prp.folder_path + "\\" # add a \ at the end
 
     lfr_prp.json_path = lfr_prp.folder_path + "\matched_poses.json" # default json file
-
-    print(lfr_prp.folder_path)
     absolute_data_path_root = os.path.abspath(os.path.join(lfr_prp.folder_path, ".."))
-    print(absolute_data_path_root)
+
     absolute_data_path_dem_folder = absolute_data_path_root + "\Data\dem"
     absolute_data_path_dem_file = find_first_file(absolute_data_path_dem_folder, ".glb")
     absolute_data_path_mask = find_file_by_partial_name(lfr_prp.folder_path, "mask")
@@ -212,11 +210,11 @@ def correctly_set_or_overwrite_path_strings(lfr_prp):
             lfr_prp.man_render_path = os.path.abspath(lfr_prp.man_render_path)
 
         render_path = lfr_prp.man_render_path
-
     else:    
         #use local addon folder "Pics"
         # warning: depends on the location of the file the function is stored in!
         render_path = set_render_path("Pics\\") #here the path render path in blender gets set
+        print("render_path:", render_path)
 
     lfr_prp.render_path = render_path #lfr_prp.render_path is only used as a reference if later needed
     

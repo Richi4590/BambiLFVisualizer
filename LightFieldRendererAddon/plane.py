@@ -90,6 +90,8 @@ def create_giant_projection_plane(source_obj):
         offset_vector = Vector((0.0, -0.1, 0.0))
         new_obj.location += offset_vector
 
+        bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY', center='BOUNDS')
+
         ##### remove materials
         for material_slot in range(len(new_obj.material_slots)):
             new_obj.active_material_index = material_slot
@@ -211,11 +213,7 @@ def update_projection_material_tex(material, img_texture):
     # Assign the new image
     base_color_texture_node.image = img_texture
     base_color_texture_node.image.reload()
-
-    print(img_texture.name)
  
     # Cleanup previous image to release resources
     if prev_image:
         bpy.data.images.remove(prev_image, do_unlink=True)
-
-    print("arrived here")

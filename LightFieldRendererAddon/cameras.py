@@ -93,7 +93,7 @@ def parse_poses(posesUrl, nth_frame):
 
         cameras.append(camera)
 
-        print(i/nth_frame, " out of ", total_frames)
+        #print(i/nth_frame, " out of ", total_frames)
 
     return cameras
 
