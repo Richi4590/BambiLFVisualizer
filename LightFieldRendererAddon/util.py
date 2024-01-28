@@ -103,10 +103,6 @@ def append_content_from_blend_file(absolute_filepath, inner_path, content_name):
     #    directory=os.path.join(file_path, inner_path),
     #    filename=material_name
     #    )
-
-    print(os.path.join(absolute_filepath, inner_path, content_name))
-    print(os.path.join(absolute_filepath, inner_path))
-    print(content_name)
     
     bpy.ops.wm.append(
         filepath=os.path.join(absolute_filepath, inner_path, content_name),
@@ -241,6 +237,9 @@ def correctly_set_or_overwrite_path_strings(lfr_prp):
     
         lfr_prp.json_path = lfr_prp.man_json_path #overwrite the default json path
 
+def is_rendering():
+    # Check if a render job is currently in progress
+    return bpy.context.scene.render.use_lock_interface
 
 ############# unused but may be useful: ###########
 def create_parent(name):

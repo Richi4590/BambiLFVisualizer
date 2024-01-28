@@ -117,7 +117,6 @@ def combine_images(lfr_props):
 
     if lfr_props.save_rend_images is False:
         if has_file_with_extension(lfr_props.render_path) is False:
-
             bpy.context.scene.render.filepath = lfr_props.render_path + "Render_Result." + bpy.context.scene.render.image_settings.file_format 
 
     print("rendering...")

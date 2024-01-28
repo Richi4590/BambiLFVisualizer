@@ -25,9 +25,10 @@ class LoadLFRDataOperator(bpy.types.Operator):
     bl_label = "Load LFR Data"
 
     def execute(self, context):
+        bpy.data.scenes["Scene"].render.use_lock_interface = True
 
-        if post_frame_change_handler in bpy.app.handlers.frame_change_post:
-            bpy.app.handlers.frame_change_post.remove(post_frame_change_handler)
+        if pre_frame_change_handler in bpy.app.handlers.frame_change_pre:
+            bpy.app.handlers.frame_change_pre.remove(pre_frame_change_handler)
 
         clear_scene()
         bpy.ops.outliner.orphans_purge(do_local_ids=True, do_linked_ids=True, do_recursive=True) #slight memory clean up
@@ -76,13 +77,23 @@ class LoadLFRDataOperator(bpy.types.Operator):
 
             init_startup_objs(self, context) # generates main camera and potentially a projection plane
             create_curve_data_and_key_frames(lfr_prp) # rendering camera gets generated inside
-            bpy.app.handlers.frame_change_post.append(post_frame_change_handler) 
+            bpy.app.handlers.frame_change_pre.append(pre_frame_change_handler) 
             bpy.context.scene.frame_set(1)
 
             bpy.ops.object.mode_set(mode="OBJECT")    
             bpy.ops.object.select_all(action='DESELECT') # deselect everything
             bpy.data.objects[lfr_prp.cam_obj.name].select_set(True) # have camera selected after loading
         return {'FINISHED'}
+
+def render_cleanup_memory(scene):
+    current_frame_number = scene.frame_current
+
+    if current_frame_number == 0:
+        bpy.ops.outliner.orphans_purge(do_local_ids=True, do_linked_ids=False, do_recursive=False) #slight memory clean up
+
+    #if current_frame_number % 250 == 0:
+        #print("purging!!")
+        #bpy.ops.outliner.orphans_purge(do_local_ids=True, do_linked_ids=False, do_recursive=False) #slight memory clean up
 
 class RenderRangeOfImagesOperator(bpy.types.Operator):
     bl_idname = "wm.render_image_range"
@@ -95,13 +106,13 @@ class RenderRangeOfImagesOperator(bpy.types.Operator):
         lfr_prp.view_range_of_images = False
 
         #----
-        if post_frame_change_handler in bpy.app.handlers.frame_change_post:
-            bpy.app.handlers.frame_change_post.remove(post_frame_change_handler)
+        if pre_frame_change_handler in bpy.app.handlers.frame_change_pre:
+            bpy.app.handlers.frame_change_pre.remove(pre_frame_change_handler)
 
         apply_images_and_positions_to_planes_from_range(lfr_prp, current_frame_number)
         offset_proj_cameras_with_focus(lfr_prp, current_frame_number) #reposition cameras depending on focus
         result_image = combine_images(lfr_prp)
-        bpy.app.handlers.frame_change_post.append(post_frame_change_handler) 
+        bpy.app.handlers.frame_change_pre.append(pre_frame_change_handler) 
         #----
         save_image_to_disk(lfr_prp.render_path, "combined_range_image.png", result_image, True)
         delete_temp_objects_of_range_rendering(lfr_prp)
@@ -216,7 +227,6 @@ class AdditionalOptionsPanel(bpy.types.Panel):
      
 def register():
     addon_utils.enable('io_import_images_as_planes', default_set=True, persistent=True, handle_error=None)
-
     bpy.utils.register_class(RangeMeshPropertyGroup)
     bpy.utils.register_class(CameraDataPropertyGroup)
     bpy.utils.register_class(ImagePropertyGroup)
@@ -228,6 +238,7 @@ def register():
     bpy.utils.register_class(ClearRenderFolderOperator)
     bpy.utils.register_class(LFRPanel)
     bpy.utils.register_class(AdditionalOptionsPanel)
+    #bpy.app.handlers.render_write.append(render_cleanup_memory)
 
 
 def unregister():        
@@ -244,9 +255,12 @@ def unregister():
     bpy.utils.unregister_class(ClearRenderFolderOperator)
     bpy.utils.unregister_class(LFRPanel)
     bpy.utils.unregister_class(AdditionalOptionsPanel)
-    if post_frame_change_handler in bpy.app.handlers.frame_change_post:
-        bpy.app.handlers.frame_change_post.remove(post_frame_change_handler)
 
+    if pre_frame_change_handler in bpy.app.handlers.frame_change_pre:
+        bpy.app.handlers.frame_change_pre.remove(pre_frame_change_handler)
     
+    #if render_cleanup_memory in bpy.app.handlers.render_write:
+        #bpy.app.handlers.render_write.remove(render_cleanup_memory)
+
 if __name__ == "__main__":
     register()

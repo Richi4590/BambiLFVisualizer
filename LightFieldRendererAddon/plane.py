@@ -199,6 +199,15 @@ def update_overlay_material_tex(plane_obj, img_texture):
                 base_color_texture_node.image = img_texture
 
 def update_projection_material_tex(material, img_texture): 
+
+
+    for image_data in bpy.data.images:
+        if image_data == img_texture:
+            continue
+
+        if image_data.users == 0:
+            bpy.data.images.remove(image_data, do_unlink=True)
+
     nodes = material.node_tree.nodes # Get the shader nodes of the material
     base_color_texture_node = None
 
@@ -206,14 +215,13 @@ def update_projection_material_tex(material, img_texture):
         if node.type == 'TEX_IMAGE':
             if node.label == 'MainTexture': #label is the in the UI renamed name. Not the .name attribute!
                     base_color_texture_node = node
-    
-    # Get the previous image, if any
-    prev_image = base_color_texture_node.image
 
     # Assign the new image
     base_color_texture_node.image = img_texture
-    base_color_texture_node.image.reload()
- 
-    # Cleanup previous image to release resources
-    if prev_image:
-        bpy.data.images.remove(prev_image, do_unlink=True)
+
+    # if is_rendering() is False:
+    #     bpy.ops.outliner.orphans_purge(do_local_ids=True, do_linked_ids=True, do_recursive=True) #memory cleanup during brushing
+    # # Iterate through all image data blocks
+
+
+            

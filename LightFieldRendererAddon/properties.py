@@ -92,7 +92,7 @@ def offset_proj_cameras_with_focus(lfr_prp, current_frame_number):
         new_location = (entry.original_location.x, entry.original_location.y + lfr_prp.focus, entry.original_location.z)
         entry.proj_cam.location = new_location
 
-def post_frame_change_handler(scene): #executes after a new keyframe loaded
+def pre_frame_change_handler(scene): 
     current_frame_number = scene.frame_current
     lfr_prp = scene.lfr_properties
 
@@ -111,6 +111,7 @@ def post_frame_change_handler(scene): #executes after a new keyframe loaded
 
         else:
             lfr_prp.projection_mesh_obj = create_giant_projection_plane(lfr_prp.dem_mesh_obj)
+
 class LFRProperties(bpy.types.PropertyGroup):
     cameras: bpy.props.CollectionProperty(type=CameraDataPropertyGroup)
     dem_mesh_obj: bpy.props.PointerProperty(type=bpy.types.Object)
