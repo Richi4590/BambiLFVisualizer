@@ -104,6 +104,10 @@ def append_content_from_blend_file(absolute_filepath, inner_path, content_name):
     #    filename=material_name
     #    )
 
+    print(os.path.join(absolute_filepath, inner_path, content_name))
+    print(os.path.join(absolute_filepath, inner_path))
+    print(content_name)
+    
     bpy.ops.wm.append(
         filepath=os.path.join(absolute_filepath, inner_path, content_name),
         directory=os.path.join(absolute_filepath, inner_path),

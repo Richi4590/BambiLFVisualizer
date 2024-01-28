@@ -146,7 +146,8 @@ def create_curve_data_and_key_frames(lfr_props):
     path.location = (path.location.x, path.location.y - 1.0, path.location.z)
 
 def create_and_prep_new_camera(lfr_props, full_image_path, full_mask_path, camera_number):
-    append_content_from_blend_file('./Assets/projection_material.blend', 'Collection', 'ProjectionGroup') # import the camera group from the blend file
+    current_blend_directory = os.path.dirname(os.path.abspath(__file__)) 
+    append_content_from_blend_file(os.path.abspath(current_blend_directory + '/Assets/projection_material.blend'), 'Collection', 'ProjectionGroup') # import the camera group from the blend file
 
     projection_plane = None
     range_obj_set = None

@@ -13,12 +13,12 @@ bl_info = {
 import re
 import addon_utils
 import bpy
-from . lightfields import *
-from . dem import *
-from . util import *
 from . cameras import *
+from . dem import *
+from . lightfields import *
 from . plane import *
 from . properties import *
+from . util import clear_scene
 
 class LoadLFRDataOperator(bpy.types.Operator):
     bl_idname = "wm.load_data"
@@ -29,7 +29,7 @@ class LoadLFRDataOperator(bpy.types.Operator):
         if post_frame_change_handler in bpy.app.handlers.frame_change_post:
             bpy.app.handlers.frame_change_post.remove(post_frame_change_handler)
 
-        util.clear_scene()
+        clear_scene()
         bpy.ops.outliner.orphans_purge(do_local_ids=True, do_linked_ids=True, do_recursive=True) #slight memory clean up
         purge_all_addon_property_data(context)
 
@@ -38,7 +38,7 @@ class LoadLFRDataOperator(bpy.types.Operator):
 
         correctly_set_or_overwrite_path_strings(lfr_prp)
 
-        lfr_prp.dem_mesh_obj = dem.import_dem(lfr_prp.dem_path, rotation=(0, 0, 0)) #euler rotation
+        lfr_prp.dem_mesh_obj = import_dem(lfr_prp.dem_path, rotation=(0, 0, 0)) #euler rotation
 
         cameras_collection = lfr_prp.cameras
         cameras_collection.clear()
@@ -213,10 +213,10 @@ class AdditionalOptionsPanel(bpy.types.Panel):
         layout.prop(addon_props, "man_render_path", text="Set Render Folder")  
         layout.prop(addon_props, "man_dem_path", text="Set DEM File Path Manually") 
         layout.prop(addon_props, "man_json_path", text="Set JSON File Path Manually") 
-            
-            
+     
 def register():
     addon_utils.enable('io_import_images_as_planes', default_set=True, persistent=True, handle_error=None)
+
     bpy.utils.register_class(RangeMeshPropertyGroup)
     bpy.utils.register_class(CameraDataPropertyGroup)
     bpy.utils.register_class(ImagePropertyGroup)
@@ -230,8 +230,9 @@ def register():
     bpy.utils.register_class(AdditionalOptionsPanel)
 
 
-def unregister():
+def unregister():        
     addon_utils.disable('io_import_images_as_planes', default_set=False, handle_error=None)
+
     bpy.utils.unregister_class(RangeMeshPropertyGroup)
     bpy.utils.unregister_class(CameraDataPropertyGroup)
     bpy.utils.unregister_class(ImagePropertyGroup)
