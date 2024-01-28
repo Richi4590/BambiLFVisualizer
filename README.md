@@ -20,13 +20,29 @@ A Light field renderer using Blender's Python API. It was created for the resear
 * This plugin was developed using Blender version 4.0
 * Windows 10/11
 
-### Getting started
-* TBW
-  
+### Getting started to develop
+* Recommended Editor of choice: Visual Studio Code with the following extensions:
+  - Python
+  - Blender Development
+  - Task Explorer
+  - Optionally: Blender Python Code Templates
+
+- Open the Addon-Folder with Visual Studio Code
+- Press CTRL + SHIFT + P to open up the command window
+- Type in "Blender: Start"
+- Select the Blender Version you want to run the Add-on with
+- Blender should open after some time
+- To make changes to the code applicable, go to the command window again
+- Enter "Blender: Reload Addons" (mapping this command as a Shortcut is recommended)
+
+* To install and test the add-on by itself the entire folder of it needs to be zipped (See section #Installing)
+
 ### Installing
 
 * Download the repository
-* TBW
+* Zip the entire repository folder (root content of the zip is the single folder itself)
+* Go within Blender to Preferences > Add-ons > Install Add-on > Select newly created zip file
+* Should install successfully and a new tab called "LFR" should appear
 
 ## Initial Authors
 * Serban Richardo
