@@ -238,6 +238,8 @@ def register():
     bpy.utils.register_class(ClearRenderFolderOperator)
     bpy.utils.register_class(LFRPanel)
     bpy.utils.register_class(AdditionalOptionsPanel)
+
+    bpy.app.handlers.frame_change_pre.append(pre_frame_change_handler)
     #bpy.app.handlers.render_write.append(render_cleanup_memory)
 
 

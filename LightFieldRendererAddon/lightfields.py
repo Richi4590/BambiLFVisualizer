@@ -4,7 +4,6 @@ from mathutils import *
 import numpy as np
 from . cameras import create_and_prep_new_camera, create_range_render_camera, set_current_camera_rendering_resolution
 from . plane import *
-from bpy_extras.image_utils import load_image
 
 import bpy
 import numpy as np
