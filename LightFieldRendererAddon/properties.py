@@ -186,6 +186,10 @@ class LFRProperties(bpy.types.PropertyGroup):
     )
 
     save_rend_images: bpy.props.BoolProperty(
+        default=True
+    ) 
+
+    render_as_animation: bpy.props.BoolProperty(
         default=False
     ) 
 

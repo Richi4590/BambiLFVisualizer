@@ -47,8 +47,6 @@ class LoadLFRDataOperator(bpy.types.Operator):
         # Add a new camera data item to the collection
         cameras_data = parse_poses(lfr_prp.json_path, lfr_prp.every_nth_frame)
 
-        #print(camerasData[0]["fovy"]) #debug
-
         #takes the camera dataset and loads it into the lfr_properties.cameras (cameras_collection)
         if (cameras_data is not None):
             for camData in cameras_data:
@@ -118,7 +116,46 @@ class RenderRangeOfImagesOperator(bpy.types.Operator):
         delete_temp_objects_of_range_rendering(lfr_prp)
         
         return {'FINISHED'}
-    
+
+class RenderFromCurrentKeyFrameOperator(bpy.types.Operator):
+    bl_idname = "wm.render_from_keyframe"
+    bl_label = "Render From Current KeyFrame"
+
+    def execute(self, context):   
+        lfr_props = context.scene.lfr_properties
+        current_frame_number = context.scene.frame_current-1
+        end_key_Frame = context.scene.frame_end
+        print("rendering...")
+
+        if lfr_props.render_as_animation is True:
+            bpy.context.scene.render.image_settings.file_format = 'FFMPEG'
+            bpy.context.scene.render.ffmpeg.format = 'MPEG4'
+            bpy.context.scene.render.ffmpeg.codec = 'H264'
+            bpy.context.scene.render.filepath = lfr_props.render_path + "Render_Result_Video.mp4"
+
+            # Iterate through the keyframes and render them
+            for i in range(current_frame_number, end_key_Frame):
+                bpy.context.scene.frame_set(i)
+                bpy.ops.render.render(animation=True)
+        else:
+            bpy.context.scene.render.image_settings.file_format = 'JPEG'
+
+            if lfr_props.save_rend_images is False:
+                if has_file_with_extension(lfr_props.render_path) is False:
+                    bpy.context.scene.render.filepath = lfr_props.render_path + "Render_Result." + bpy.context.scene.render.image_settings.file_format 
+
+            # Iterate through the keyframes and render them
+            for i in range(current_frame_number, end_key_Frame):
+                bpy.context.scene.frame_set(i)
+                if lfr_props.save_rend_images:
+                    bpy.context.scene.render.filepath = lfr_props.render_path + f"Render_Result_{i}." + bpy.context.scene.render.image_settings.file_format
+
+                bpy.ops.render.render(write_still=True)
+
+        print("done rendering")
+        bpy.context.scene.frame_set(current_frame_number) #set back to initial key-frame
+        return {'FINISHED'}
+
 class OpenRenderFolderOperator(bpy.types.Operator):
     bl_idname = "wm.open_render_folder"
     bl_label = "Open Render Folder"
@@ -195,8 +232,10 @@ class LFRPanel(bpy.types.Panel):
         row.prop(addon_props, "range_to_interpolate", text="Amount of frames to interpolate")
         row.prop(addon_props, "focus", text="Focus")
         row = layout.row()
-        layout.prop(addon_props, "view_range_of_images", text="View range of images?")
+        row.prop(addon_props, "view_range_of_images", text="View range of images?")
+        row = layout.row()
         row.operator("wm.render_image_range", text="Render Range of Images")
+        layout.operator("wm.render_from_keyframe", text="Render Images From Current KeyFrame")
 
 
 class AdditionalOptionsPanel(bpy.types.Panel):
@@ -218,6 +257,7 @@ class AdditionalOptionsPanel(bpy.types.Panel):
         row.prop(addon_props, "rend_res_y", text="Rendering Resolution Y")
         row = layout.row(align=True)
         row.prop(addon_props, "save_rend_images", text="Save Rendered Images Individually?") 
+        row.prop(addon_props, "render_as_animation", text="Render as video?")
         row.operator("wm.open_render_folder", text="Open Render Folder")
         row.operator("wm.clear_render_folder", text="Clear Render Folder Content")
         row = layout.row(align=False)
@@ -236,11 +276,11 @@ def register():
     bpy.utils.register_class(RenderRangeOfImagesOperator)
     bpy.utils.register_class(OpenRenderFolderOperator)
     bpy.utils.register_class(ClearRenderFolderOperator)
+    bpy.utils.register_class(RenderFromCurrentKeyFrameOperator)
     bpy.utils.register_class(LFRPanel)
     bpy.utils.register_class(AdditionalOptionsPanel)
 
     bpy.app.handlers.frame_change_pre.append(pre_frame_change_handler)
-    #bpy.app.handlers.render_write.append(render_cleanup_memory)
 
 
 def unregister():        
@@ -255,14 +295,12 @@ def unregister():
     bpy.utils.unregister_class(RenderRangeOfImagesOperator)
     bpy.utils.unregister_class(OpenRenderFolderOperator)
     bpy.utils.unregister_class(ClearRenderFolderOperator)
+    bpy.utils.unregister_class(RenderFromCurrentKeyFrameOperator)
     bpy.utils.unregister_class(LFRPanel)
     bpy.utils.unregister_class(AdditionalOptionsPanel)
 
     if pre_frame_change_handler in bpy.app.handlers.frame_change_pre:
         bpy.app.handlers.frame_change_pre.remove(pre_frame_change_handler)
-    
-    #if render_cleanup_memory in bpy.app.handlers.render_write:
-        #bpy.app.handlers.render_write.remove(render_cleanup_memory)
 
 if __name__ == "__main__":
     register()
