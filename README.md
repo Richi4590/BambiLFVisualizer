@@ -56,13 +56,10 @@ A Light field renderer using Blender's Python API. It was created for the resear
 ## Known Issues:
   - Rotating a camera to rotate the projected image, does not work as expected
   - Trying to render multiple frames with Blender's Render -> Render Images or Render Animation
-    option with EEVEE results in the program crashing if the render of images is too fast.
-  - The reason why it crashes may be due to how Blender accesses and deletes data (images) or
-	how its dependency graph gets updated. In theory, waiting for blender to do a full iteration of its internal
-	code (like an async sleep for example) should result enough time for it to update its
-	dependency graph by itself and therefore stopping the crashes during fast frame rendering.
+    is crashing if the rendering of images is too fast.
+  - The reason why it crashes may be due to how Blender accesses the data for the preview of the frame.
   - Current Workaround:
-      - Set the render samples to something high so that the time it takes to render is min. ~0.5s per frame
+      - Created our own render button with the option to render it as a video (MPEG)
   - If theres an error to install the addon by itself after using the dev environment with Visual Studio Code,
 	then deleting the addon folder stored in C:\Users\"your username"\AppData\Blender Foundation\Blender\4.0\scripts\addons\
 	should resolve the issue. The same goes vice versa if trying to start the dev environment after installing the plugin normally.
